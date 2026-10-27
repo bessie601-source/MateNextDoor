@@ -75,7 +75,7 @@ function renderEmail(d, today) {
 ${sections.map(([title, items, hint]) => `<h3 style="margin:20px 0 4px;font-size:16px">${esc(title)}</h3>${hint ? `<p style="margin:0 0 6px;color:#5f5f5f">${esc(hint)}</p>` : ""}
 <ul style="margin:0;padding-left:18px">${items.map((x) => `<li style="margin:0 0 8px"><strong>${esc(x.head)}</strong><br>${esc(x.text)}</li>`).join("")}</ul>`).join("\n")}
 <p style="margin-top:20px">${esc(money_line)}</p>
-<p><a href="${PLANNER_URL}" style="display:inline-block;background:#d3172b;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:600">Open the planner</a></p>
+<p><a href="${PLANNER_URL}" style="display:inline-block;background:#b00020;color:#fff;padding:12px 18px;border-radius:2px;letter-spacing:.12em;text-transform:uppercase;font-size:12px;text-decoration:none;font-weight:600">Open the planner</a></p>
 </div>`;
   return { subject, text, html };
 }
