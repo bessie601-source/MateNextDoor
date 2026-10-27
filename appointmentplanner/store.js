@@ -10,20 +10,54 @@
   const $ = (s) => document.querySelector(s);
   const UNSAVED = " Showing example data; changes won't be saved.";
 
+  // Returns { cfg } or { problem } (a sentence saying what to fix).
   async function loadConfig() {
+    let r;
     try {
-      const r = await fetch("/api/planner-config", { headers: { Accept: "application/json" }, cache: "no-store" });
-      if (!r.ok) return null;
-      const c = await r.json();
-      return c && c.url && c.anonKey ? c : null;
+      r = await fetch("/api/planner-config", { headers: { Accept: "application/json" }, cache: "no-store" });
     } catch {
-      return null;
+      return { problem: "Couldn't reach matenextdoor.com. Check your internet connection and reload." };
     }
+    const c = await r.json().catch(() => ({}));
+    if (r.ok && c.url && c.anonKey) return { cfg: c };
+    if (r.status === 501) return { problem: c.error || "Storage isn't set up yet (see the README)." };
+    return { problem: `The planner's settings didn't load (error ${r.status}). Reload the page.` };
+  }
+
+  // Test the Supabase address and key before asking for a password, so a setup mistake is named.
+  async function checkSetup(cfg) {
+    let host = cfg.url;
+    try { host = new URL(cfg.url).host; } catch {}
+    let r;
+    try {
+      r = await fetch(cfg.url + "/auth/v1/settings", { headers: { apikey: cfg.anonKey }, cache: "no-store" });
+    } catch {
+      return navigator.onLine === false
+        ? "You're offline. Reconnect and reload."
+        : `Couldn't reach Supabase at ${host}. In Vercel, check SUPABASE_URL is the Project URL (https://<id>.supabase.co), then redeploy.`;
+    }
+    if (r.status === 401 || r.status === 403)
+      return "Supabase didn't accept the planner's key. In Vercel, set SUPABASE_ANON_KEY to the anon key from Supabase → Project Settings → API Keys → Legacy API Keys, then redeploy.";
+    if (!r.ok) return `Supabase at ${host} answered with error ${r.status}. Check SUPABASE_URL in Vercel, then redeploy.`;
+    return null;
+  }
+
+  function signInError(error) {
+    const msg = String((error && error.message) || "");
+    if (/not confirmed/i.test(msg))
+      return "This login hasn't been confirmed. In Supabase → Authentication → Users, delete it and add it again with Auto Confirm User ticked.";
+    if (error.status === 400 || /invalid login credentials/i.test(msg)) return "That email and password don't match.";
+    if (error.status === 429) return "Too many attempts. Wait a minute, then try again.";
+    if (error.status === 401 || error.status === 403 || /api key/i.test(msg))
+      return "Supabase didn't accept the planner's key. In Vercel, set SUPABASE_ANON_KEY to the legacy anon key, then redeploy.";
+    if (!error.status) return "Couldn't reach Supabase. Check your internet connection; if that's fine, check SUPABASE_URL in Vercel.";
+    return `Couldn't sign in (Supabase said: ${msg || "error " + error.status}).`;
   }
 
   /* ---------- sign-in screen ---------- */
   function gate(mode, msg) {
     $("#loverlay").hidden = !mode;
+    $("#lwait").hidden = mode !== "wait";
     $("#lform").hidden = mode !== "signin";
     $("#pform").hidden = mode !== "newpass";
     $("#l-err").textContent = mode === "signin" ? msg || "" : "";
@@ -43,10 +77,7 @@
         btn.disabled = true; $("#l-err").textContent = "";
         const { data, error } = await sb.auth.signInWithPassword({ email, password });
         btn.disabled = false;
-        if (error) {
-          $("#l-err").textContent = error.status === 400 ? "That email and password don't match." : "Couldn't sign in. Check your connection and try again.";
-          return;
-        }
+        if (error) { $("#l-err").textContent = signInError(error); return; }
         $("#l-pass").value = "";
         gate(null);
         resolve(data.session);
@@ -165,9 +196,26 @@
 
   /* ---------- connect ---------- */
   async function connect() {
+    gate("wait");
+    try {
+      return await signInAndLoad();
+    } finally {
+      if (!$("#lwait").hidden) gate(null);
+    }
+  }
+
+  function tablesProblem(e) {
+    return e && (e.code === "42P01" || e.code === "PGRST205" || /does not exist|schema cache/i.test(e.message || ""))
+      ? "The planner's tables aren't in Supabase yet. Run supabase/planner.sql in Supabase → SQL Editor, then reload."
+      : "Couldn't reach the planner's storage. Check your connection and reload.";
+  }
+
+  async function signInAndLoad() {
     if (!window.supabase || !window.supabase.createClient) return { db: null, reason: "Couldn't load the storage library. Reload the page." + UNSAVED };
-    const cfg = await loadConfig();
-    if (!cfg) return { db: null, reason: "Storage isn't set up yet (see the README)." + UNSAVED };
+    const { cfg, problem } = await loadConfig();
+    if (!cfg) return { db: null, reason: problem + UNSAVED };
+    const setup = await checkSetup(cfg);
+    if (setup) return { db: null, reason: setup + UNSAVED };
     let recovering = /type=recovery/.test(location.hash);
     const sb = window.supabase.createClient(cfg.url, cfg.anonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
     sb.auth.onAuthStateChange((event) => { if (event === "PASSWORD_RECOVERY") recovering = true; });
@@ -177,7 +225,7 @@
     for (;;) {
       if (!session) session = await waitForSignIn(sb, msg);
       let ok;
-      try { ok = await isMember(sb); } catch { return { db: null, reason: "Couldn't reach the planner's storage. Check your connection and reload." + UNSAVED }; }
+      try { ok = await isMember(sb); } catch (e) { return { db: null, reason: tablesProblem(e) + UNSAVED }; }
       if (ok) break;
       await sb.auth.signOut();
       session = null;
@@ -188,10 +236,12 @@
     out.hidden = false;
     out.title = session.user && session.user.email ? "Signed in as " + session.user.email : "";
     out.onclick = () => sb.auth.signOut().finally(() => location.reload());
-    if (recovering) askNewPassword(sb);
 
+    gate("wait");
     const db = makeDb(sb);
-    try { await db.load(); } catch { return { db: null, reason: "Couldn't load the planner's data. Check your connection and reload." + UNSAVED }; }
+    try { await db.load(); } catch (e) { return { db: null, reason: tablesProblem(e) + UNSAVED }; }
+    gate(null);
+    if (recovering) askNewPassword(sb);
     return { db };
   }
 
