@@ -37,6 +37,15 @@ create policy "Members manage planner data" on public.planner_docs
   using (public.is_planner_member())
   with check (public.is_planner_member());
 
+-- Let the API reach the tables; the policies above still decide what each person sees.
+-- Needed because newer Supabase projects don't open new tables to the API automatically.
+grant usage on schema public to authenticated, service_role;
+grant select on public.planner_members to authenticated;
+grant select, insert, update, delete on public.planner_docs to authenticated;
+grant execute on function public.is_planner_member() to authenticated;
+grant select on public.planner_docs, public.planner_members to service_role; -- the morning email
+revoke all on public.planner_members, public.planner_docs from anon;
+
 -- Give Will access. Add a line per extra person.
 insert into public.planner_members (email) values ('will@matenextdoor.com')
   on conflict do nothing;

@@ -205,8 +205,15 @@
   }
 
   function tablesProblem(e) {
-    return e && (e.code === "42P01" || e.code === "PGRST205" || /does not exist|schema cache/i.test(e.message || ""))
-      ? "The planner's tables aren't in Supabase yet. Run supabase/planner.sql in Supabase → SQL Editor, then reload."
+    const msg = String((e && e.message) || "");
+    if (e && (e.code === "42P01" || e.code === "PGRST205" || /does not exist|schema cache/i.test(msg)))
+      return "The planner's tables aren't in Supabase yet. Run supabase/planner.sql in Supabase → SQL Editor, then reload.";
+    if (e && (e.code === "42501" || /permission denied/i.test(msg)))
+      return "Supabase isn't letting the planner read its tables. Run the latest supabase/planner.sql again in Supabase → SQL Editor, then reload.";
+    if (e && (e.code === "PGRST106" || /schema must be one of/i.test(msg)))
+      return "Supabase's API doesn't include the public schema. In Supabase → Project Settings → Data API, add public to Exposed schemas, then reload.";
+    return msg && !/failed to fetch|network/i.test(msg)
+      ? `Couldn't open the planner's storage (Supabase said: ${msg}).`
       : "Couldn't reach the planner's storage. Check your connection and reload.";
   }
 
