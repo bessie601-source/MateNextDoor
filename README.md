@@ -4,8 +4,7 @@ Static one-page site plus one serverless function (`api/quote.js`) that emails q
 
 ## Before launch
 1. **Logo:** save Will's white line-art logo (transparent PNG) as `img/logo.png`. Until then a text badge shows in its place.
-2. **Phone:** replace every `04XX XXX XXX` / `tel:04XXXXXXXX` in `index.html` (4 places).
-3. **Email address:** the site shows `will@matenextdoor.com`. Change it in `index.html` if the domain is different.
+2. **Email address:** the site shows `will@matenextdoor.com`. Change it in `index.html` if the domain is different.
 
 ## Going live
 1. **Domain:** done: `matenextdoor.com`.
