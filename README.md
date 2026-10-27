@@ -34,6 +34,12 @@ One-off setup:
 
 To give someone else access: add their user in Supabase, then run `insert into public.planner_members (email) values ('their@email');`.
 
+### Morning email to Will
+Every morning (`vercel.json`: 21:00 UTC, so 8am in Sydney during daylight saving and 7am otherwise) `api/daily-digest.js` emails Will what the planner says needs doing: reminders due, quotes to follow up, invoices to send, and jobs that don't add up. It reads the planner only, never emails clients, and sends nothing on days with nothing to do. It uses the quote form's Resend settings, plus these in Vercel → Settings → Environment Variables:
+- `SUPABASE_SERVICE_ROLE_KEY` = Supabase → Project Settings → API keys → service_role (secret: keep it in Vercel only)
+- `CRON_SECRET` = any long random string (Vercel sends it with each cron call, so nobody else can trigger the email)
+- optional `DIGEST_TO_EMAIL` (default: `QUOTE_TO_EMAIL`) and `PLANNER_TIMEZONE` (default: `Australia/Sydney`)
+
 ## Files
 - `index.html`: the page
 - `styles.css`: black / white / card red (`#e11b1b`), Barlow + Barlow Condensed
@@ -42,6 +48,8 @@ To give someone else access: add their user in Supabase, then run `insert into p
 - `img/icons/`: the 14 service icons, cut from Will's printed card
 - `appointmentplanner/index.html`: the planner
 - `appointmentplanner/store.js`: sign-in and saving through Supabase
+- `appointmentplanner/jobrules.js`: job rules (money, invoices, reminder ladder, next actions), shared with the morning email
+- `api/daily-digest.js` + `vercel.json`: the morning email and its schedule
 - `appointmentplanner/vendor/`: supabase-js 2.45.4 (browser build)
 - `api/planner-config.js`: gives the planner its Supabase URL and public key
 - `supabase/planner.sql`: tables and access rules for the planner
