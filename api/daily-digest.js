@@ -10,6 +10,7 @@
 //   PLANNER_TIMEZONE           decides what "today" is (default: Australia/Sydney)
 
 const JobRules = require("../appointmentplanner/jobrules.js");
+const env = require("../lib/supabase-env.js");
 
 const PLANNER_URL = "https://matenextdoor.com/appointmentplanner/";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -81,19 +82,20 @@ ${sections.map(([title, items, hint]) => `<h3 style="margin:20px 0 4px;font-size
 }
 
 async function handler(req, res) {
-  const { CRON_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY, QUOTE_FROM_EMAIL } = process.env;
+  const { CRON_SECRET, RESEND_API_KEY, QUOTE_FROM_EMAIL } = process.env;
+  const supabaseUrl = env.url(), serviceKey = env.serviceKey();
   const to = process.env.DIGEST_TO_EMAIL || process.env.QUOTE_TO_EMAIL;
   if (!CRON_SECRET || req.headers.authorization !== `Bearer ${CRON_SECRET}`) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !RESEND_API_KEY || !QUOTE_FROM_EMAIL || !to) {
+  if (!supabaseUrl || !serviceKey || !RESEND_API_KEY || !QUOTE_FROM_EMAIL || !to) {
     return res.status(501).json({ error: "Daily email not configured" });
   }
 
   const today = todayIn(process.env.PLANNER_TIMEZONE || "Australia/Sydney");
   let rows;
   try {
-    rows = await loadDocs(SUPABASE_URL.replace(/\/+$/, ""), SUPABASE_SERVICE_ROLE_KEY);
+    rows = await loadDocs(supabaseUrl, serviceKey);
   } catch (e) {
     console.error("daily-digest: planner read failed", e);
     return res.status(502).json({ error: "Couldn't read the planner" });

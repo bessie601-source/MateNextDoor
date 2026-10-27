@@ -626,8 +626,9 @@ table.jobs { width: 100%; border-collapse: collapse; min-width: 900px; font-size
   </form>
 </div>
 <div class="toast" id="toast" role="status" hidden></div>
-<div class="overlay" id="loverlay" hidden>
-  <form class="sheet" id="lform" novalidate>
+<div class="overlay" id="loverlay">
+  <div class="sheet" id="lwait" role="status"><p style="margin:0">Loading the planner…</p></div>
+  <form class="sheet" id="lform" novalidate hidden>
     <h2>Sign in</h2>
     <p class="note" style="margin:0">The planner holds client details, so it's for Mate Next Door only.</p>
     <div class="field"><label for="l-email">Email</label><input id="l-email" type="email" autocomplete="username" maxlength="120"></div>
@@ -1928,7 +1929,7 @@ table.jobs { width: 100%; border-collapse: collapse; min-width: 900px; font-size
     let reason = "";
     try { const r = await window.PlannerStore.connect(); db = r.db; reason = r.reason || ""; }
     catch { db = null; reason = "Couldn't reach the planner's storage. Showing example data; changes won't be saved."; }
-    if (!db) { if (reason) $("#offline").textContent = reason; $("#offline").hidden = false; loadExamples(); render(); return; }
+    if (!db) { $("#loverlay").hidden = true; if (reason) $("#offline").textContent = reason; $("#offline").hidden = false; loadExamples(); render(); return; }
     db.doc("config/settings").onSnapshot((snap) => {
       if (!snap.exists) return;
       const s = snap.data();
