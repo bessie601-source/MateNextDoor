@@ -1,0 +1,2004 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Will's Appointment Planner</title>
+<link rel="icon" href="/img/favicon.png">
+<link rel="apple-touch-icon" href="/img/favicon.png">
+<style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@600;700&display=swap">
+<style>
+/* Layout: an appointment book. Week grid of 1-hour rows is the working surface; the selected day's run-sheet sits below it. */
+/* Colours, type and shapes from the Crimson Noir design system: one dark theme. */
+:root {
+  color-scheme: dark;
+  --bg: #000000;          /* black: page ground */
+  --surface: #1c1c1c;     /* surface: panels, inputs */
+  --ink: #ffffff;         /* ink */
+  --muted: #d9d9d9;       /* ink-muted */
+  --line: #5d5d5d;        /* surface-raised: dividers, hover */
+  --open: #5d5d5d;        /* surface-raised: bookable hours */
+  --open-ink: #ffffff;
+  --appt: #ffffff;        /* appointments read as solid ink blocks */
+  --appt-ink: #000000;
+  --accent: #b00020;      /* crimson: the one action colour, fill only */
+  --accent-press: #8b0000;/* blood: pressed crimson */
+  --accent-ink: #ffffff;
+  --warn: #ff2c2c;        /* crimson-text: red that must be read */
+  --target: #8b0000;      /* blood: selected / can-move-here fields, ink on top */
+  --past: #000000;
+  --hatch: rgba(0, 0, 0, .16);
+  --radius-sm: 2px;       /* controls */
+  --radius-md: 6px;       /* dialogs and other floating layers */
+  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-body: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-body);
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-body); font-variant-numeric: tabular-nums;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 18px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
+
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
+h1 { font: 700 clamp(26px, 4vw, 34px)/1.1 var(--font-display); margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.weeklabel { color: var(--muted); margin-top: 4px; }
+.nav { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn {
+  border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius-sm);
+  padding: 10px 14px; font: 600 12px/16px var(--font-body); letter-spacing: .12em; text-transform: uppercase;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.primary:hover, .btn.primary:active { background: var(--accent-press); border-color: var(--accent-press); }
+a { color: var(--warn); }
+.btn.danger { color: var(--warn); }
+.btn.danger.armed { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+.stats { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 0; overflow: hidden; }
+.stat { background: var(--surface); padding: 12px 16px; display: grid; gap: 4px; align-content: start; }
+.stat .k { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.stat .v { font: 600 22px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.stat .v small { font: 400 14px var(--font-body); color: var(--muted); }
+.bar { height: 6px; border-radius: var(--radius-sm); background: var(--past); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+.target { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.target input { width: 58px; padding: 2px 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); font-family: var(--font-mono); }
+
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); padding: 3px; }
+.seg button { border: 0; background: transparent; padding: 8px 14px; border-radius: var(--radius-sm); font: 600 12px/16px var(--font-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.hint { color: var(--muted); font-size: 14px; flex: 1 1 240px; min-width: 0; }
+.tools { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.banner { border-radius: var(--radius-sm); padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.banner.move { background: var(--target); color: var(--ink); }
+.banner.info { background: var(--surface); color: var(--muted); }
+
+.gridbox { overflow-x: auto; border: 1px solid var(--line); border-radius: 0; background: var(--surface); }
+table.grid { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 780px; table-layout: fixed; }
+.grid th, .grid td { border-right: 1px solid var(--bg); border-bottom: 1px solid var(--bg); padding: 0; }
+.grid tr > :last-child { border-right: 0; }
+.grid tbody tr:last-child > * { border-bottom: 0; }
+.grid col.hcol { width: 64px; }
+.grid th.corner, .grid th.hr { position: sticky; left: 0; background: var(--surface); z-index: 2; }
+.grid th.hr { font: 500 12px var(--font-mono); color: var(--muted); text-align: right; padding: 4px 8px 0 0; vertical-align: top; white-space: nowrap; }
+.daybtn { all: unset; box-sizing: border-box; cursor: pointer; display: grid; width: 100%; padding: 8px 8px 7px; gap: 1px; text-align: left; }
+.daybtn:focus-visible { outline: 2px solid var(--warn); outline-offset: -2px; }
+.dname { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.dnum { font: 700 20px/1.1 var(--font-display); }
+.dmeta { font: 400 11.5px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+th.dayh.today .dnum { color: var(--warn); }
+th.dayh.sel { box-shadow: inset 0 -3px 0 var(--ink); }
+
+td.cell { height: 44px; position: relative; }
+td.cell.avail { background: var(--open); }
+td.cell.avail::after { content: "Open"; position: absolute; left: 8px; top: 5px; font: 500 11px var(--font-mono); color: var(--open-ink); opacity: 0; }
+td.cell.avail:hover::after { opacity: .8; }
+td.cell.past { background-image: linear-gradient(var(--past), var(--past)); background-blend-mode: normal; opacity: .55; }
+td.cell.past.avail { opacity: .45; }
+body.mode-alloc td.cell:not(.lockedday) { cursor: cell; }
+body.mode-alloc table.grid { touch-action: none; user-select: none; }
+body.mode-book td.cell.avail:not(.past) { cursor: pointer; }
+td.cell.target { background: var(--target); cursor: pointer; box-shadow: inset 0 0 0 2px var(--warn); }
+td.cell.target::after { content: "Move here"; opacity: 1; color: var(--ink); position: absolute; left: 8px; top: 5px; font: 500 11px var(--font-mono); }
+td.cell.dropover { box-shadow: inset 0 0 0 3px var(--ink); }
+
+td.apptcell { padding: 3px; vertical-align: top; background: var(--surface); }
+.appt {
+  height: 100%; min-height: 38px; border-radius: var(--radius-sm); padding: 5px 8px; background: var(--appt); color: var(--appt-ink);
+  display: flex; flex-direction: column; gap: 1px; cursor: pointer; overflow: hidden; font-size: 13px; line-height: 1.25;
+}
+.appt[draggable="true"] { cursor: grab; }
+.appt .atime { font: 500 11px var(--font-mono); opacity: .85; }
+.appt strong { font-weight: 600; overflow-wrap: anywhere; }
+.appt .awith { opacity: .85; overflow-wrap: anywhere; }
+.appt .tag { margin-top: auto; font: 500 10.5px var(--font-mono); text-transform: uppercase; letter-spacing: .05em; opacity: .9; }
+.appt.locked { background-image: repeating-linear-gradient(135deg, transparent 0 7px, var(--hatch) 7px 14px); }
+.appt.outside { box-shadow: inset 4px 0 0 var(--warn); }
+.appt.moving { outline: 3px dashed var(--accent); outline-offset: -3px; opacity: .7; }
+
+.lower { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 0; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.panel h2 { font: 700 19px/1.2 var(--font-display); margin: 0; }
+.panel h2 small { font: 400 14px var(--font-body); color: var(--muted); margin-left: 6px; }
+.runsheet { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.runsheet li { display: grid; grid-template-columns: 128px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: var(--radius-sm); }
+.runsheet .t { font: 500 13px var(--font-mono); font-variant-numeric: tabular-nums; }
+.runsheet li.free { background: var(--open); color: var(--open-ink); }
+.runsheet li.ap { background: var(--bg); border: 1px solid var(--line); }
+.runsheet li.ap .sub { color: var(--muted); font-size: 13px; }
+.runsheet .warn { color: var(--warn); font-size: 13px; }
+.empty { color: var(--muted); }
+.rules { margin: 0; padding-left: 18px; color: var(--muted); display: grid; gap: 6px; font-size: 14px; }
+.rules strong { color: var(--ink); font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 14px; border-radius: var(--radius-sm); display: inline-block; border: 1px solid var(--line); }
+.settings { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); }
+.settings select { padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); }
+
+.overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .72); display: grid; place-items: center; z-index: 20;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.sheet { background: var(--surface); border-radius: var(--radius-md); width: min(460px, 100%); max-height: 100%; overflow: auto; padding: 24px; display: grid; gap: 16px; }
+.sheet h2 { font: 700 21px/1.2 var(--font-display); margin: 0; }
+.field { display: grid; gap: 4px; }
+.field label { font-size: 13px; font-weight: 500; color: var(--muted); }
+.field input, .field select, .field textarea { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--bg); width: 100%; }
+.field textarea { min-height: 70px; resize: vertical; }
+.row3 { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 10px; }
+.note { font-size: 13.5px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--past); color: var(--muted); }
+.err { color: var(--warn); font-size: 14px; font-weight: 500; min-height: 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
+.actions .r { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg);
+  padding: 10px 16px; border-radius: var(--radius-md); font-size: 14px; z-index: 30; max-width: calc(100% - 32px); }
+
+.side { display: grid; gap: 18px; min-width: 0; }
+.panelhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.search { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 7px 10px; background: var(--bg); width: 100%; }
+.clientlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 320px; overflow: auto; }
+.clientlist button { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline; width: 100%; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--bg); }
+.clientlist button:hover { border-color: var(--ink); }
+.clientlist button:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
+.clientlist .cn { font-weight: 600; overflow-wrap: anywhere; }
+.clientlist .cp { font: 400 13px var(--font-mono); color: var(--muted); }
+.ccard { border: 1px solid var(--line); border-top: 4px solid var(--accent-press); border-radius: 0; padding: 14px 16px; display: grid; gap: 12px; background: var(--bg); }
+.ccard h3 { font: 700 23px/1.15 var(--font-display); margin: 0; overflow-wrap: anywhere; }
+.ccard dl { margin: 0; display: grid; grid-template-columns: 66px minmax(0, 1fr) auto; gap: 10px 10px; align-items: center; }
+.ccard dt { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.ccard dd { margin: 0; overflow-wrap: anywhere; user-select: text; }
+.ccard dd.none { color: var(--muted); font-style: italic; }
+.copy { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius-sm); padding: 2px 9px; font-size: 12px; }
+.withrow { display: flex; gap: 8px; }
+.withrow select { flex: 1; min-width: 0; }
+.alist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+.alist li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; }
+.alist .t { font: 500 13px var(--font-mono); color: var(--muted); }
+.flabel { font-size: 13px; font-weight: 500; color: var(--muted); }
+#coverlay { z-index: 25; }
+.linkbtn { all: unset; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; color: var(--ink); }
+.linkbtn:focus-visible { outline: 2px solid var(--warn); }
+
+.weektable { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px 10px; align-items: center; }
+.weektable label { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.weektable input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--warn); }
+.weektable select, .settings select { padding: 5px 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); }
+.weektable select:disabled { opacity: .4; }
+.weektable .to { color: var(--muted); font-size: 13px; }
+#soverlay { z-index: 25; }
+
+.rbtns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.smsok { color: var(--ink); font-weight: 500; }
+.smslist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 420px; overflow: auto; }
+.smslist li { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--bg); display: grid; gap: 2px; font-size: 14px; }
+.smslist .sh { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.smslist .t { font: 400 12.5px var(--font-mono); color: var(--muted); }
+.smslist .sub { color: var(--muted); font-size: 13px; }
+.smslist summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.smslist details p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+a.btn { text-decoration: none; display: inline-block; }
+#moverlay { z-index: 26; }
+
+/* Jobs: quote → deposit → work → invoice → paid, one row per Job ID */
+.seg { flex-wrap: wrap; }
+.viewseg { margin-top: 12px; }
+.view { display: grid; gap: 18px; min-width: 0; }
+.stats.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.stats.four .stat:first-child { grid-column: auto; }
+.actionlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.actionlist li { display: grid; grid-template-columns: 128px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--bg); }
+.actionlist li.urgent { border-color: var(--warn); }
+.actionlist .sub, .jobs .sub { color: var(--muted); font-size: 13px; }
+.jid { font: 500 13px var(--font-mono); white-space: nowrap; }
+.tablebox { overflow-x: auto; border: 1px solid var(--line); border-radius: 0; background: var(--surface); }
+table.jobs { width: 100%; border-collapse: collapse; min-width: 900px; font-size: 14px; }
+.jobs th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 500; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.jobs td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.jobs tr:last-child td { border-bottom: 0; }
+.jobs .num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chip { display: inline-block; font: 600 11px/16px var(--font-body); letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: var(--radius-sm); border: 1px solid var(--line); white-space: nowrap; background: var(--surface); color: var(--ink); }
+.chip.hot { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.chip.ok { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.chip.dim { color: var(--muted); }
+.sheet.wide { width: min(780px, 100%); }
+.sec { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 10px; }
+.sec h3 { font: 700 16px/1.2 var(--font-display); margin: 0; display: flex; justify-content: space-between; gap: 4px 10px; flex-wrap: wrap; align-items: baseline; }
+.sec h3 small { font: 400 13px var(--font-body); color: var(--muted); }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: end; }
+.calc { font-size: 13.5px; color: var(--muted); }
+.calc strong { color: var(--ink); font-family: var(--font-mono); font-weight: 500; }
+.varlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.varlist li { display: grid; grid-template-columns: minmax(0, 1fr) 120px auto auto; gap: 8px; align-items: center; }
+.varlist input:not([type="checkbox"]) { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 7px 9px; background: var(--bg); width: 100%; }
+.check { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.check input { width: 18px; height: 18px; accent-color: var(--warn); }
+.ladder { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.rung { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 13px; background: var(--bg); display: grid; gap: 4px; align-content: start; }
+.rung.done { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.rung.next { border-color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn); }
+.rung .t { font: 500 11.5px var(--font-mono); opacity: .85; }
+.rung .btn { justify-self: start; }
+.nextact { border-radius: var(--radius-sm); padding: 10px 12px; background: var(--target); color: var(--ink); font-size: 14px; }
+.nextact.calm { background: var(--past); color: var(--muted); }
+.warnline { color: var(--warn); font-weight: 500; }
+#joverlay { z-index: 24; }
+#eoverlay { z-index: 27; }
+
+@media (max-width: 860px) {
+  .lower { grid-template-columns: minmax(0, 1fr); }
+  .stats { grid-template-columns: 1fr 1fr; }
+  .stats .stat:first-child { grid-column: 1 / -1; }
+  .stats.four { grid-template-columns: 1fr 1fr; }
+  .stats.four .stat:first-child { grid-column: auto; }
+  .grid3 { grid-template-columns: 1fr 1fr; }
+  .ladder { grid-template-columns: minmax(0, 1fr); }
+  .actionlist li { grid-template-columns: minmax(0, 1fr) auto; }
+  .actionlist li .jid { grid-column: 1 / -1; }
+  .varlist li { grid-template-columns: minmax(0, 1fr) 110px; }
+  .runsheet li { grid-template-columns: minmax(0, 1fr) auto; }
+  .runsheet li .t { grid-column: 1 / -1; }
+  .row3 { grid-template-columns: 1fr 1fr; }
+  .row3 .field:first-child { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+#loverlay { z-index: 40; background: var(--bg); }
+</style>
+<script src="vendor/supabase-2.45.4.min.js"></script>
+<script src="jobrules.js"></script>
+<script src="store.js"></script>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Will's Appointment Planner</h1>
+      <div class="weeklabel" id="weeklabel">Loading schedule…</div>
+      <div class="seg viewseg" role="group" aria-label="View">
+        <button type="button" id="v-plan" aria-pressed="true">Schedule</button>
+        <button type="button" id="v-jobs" aria-pressed="false">Jobs &amp; invoices</button>
+      </div>
+    </div>
+    <nav class="nav" aria-label="Week">
+      <button class="btn" id="prev" type="button">‹ Previous</button>
+      <button class="btn" id="thisweek" type="button">This week</button>
+      <button class="btn" id="next" type="button">Next ›</button>
+      <button class="btn" id="opensettings" type="button">Settings</button>
+      <button class="btn" id="signout" type="button" hidden>Sign out</button>
+    </nav>
+  </header>
+
+  <div class="banner info" id="offline" hidden>This view can't save, so it's showing example data. Changes last until you close the page.</div>
+
+  <div class="view" id="planview">
+  <section class="stats" aria-label="This week">
+    <div class="stat">
+      <span class="k">Bookable hours</span>
+      <span class="v" id="s-alloc">0 h</span>
+      <span class="target">Default hours: <span class="defsummary"></span></span>
+    </div>
+    <div class="stat"><span class="k">Booked</span><span class="v" id="s-booked">0 h</span></div>
+    <div class="stat"><span class="k">Free between appointments</span><span class="v" id="s-free">0 h</span></div>
+  </section>
+
+  <div class="toolbar">
+    <div class="seg" role="group" aria-label="Mode">
+      <button type="button" id="m-book" aria-pressed="true">Appointments</button>
+      <button type="button" id="m-alloc" aria-pressed="false">Adjust hours</button>
+    </div>
+    <span class="hint" id="hint"></span>
+    <div class="tools" id="alloctools" hidden>
+      <button class="btn" type="button" id="resetweek">Reset this week to default hours</button>
+    </div>
+  </div>
+
+  <div class="banner move" id="movebanner" hidden>
+    <span id="movetext"></span>
+    <button class="btn" type="button" id="movecancel">Cancel move</button>
+  </div>
+
+  <div class="gridbox"><table class="grid" id="grid" aria-label="Week schedule in 1-hour slots"></table></div>
+
+  <div class="lower">
+    <section class="panel" aria-labelledby="dayhead">
+      <h2 id="dayhead">Day</h2>
+      <ul class="runsheet" id="runsheet"></ul>
+      <div class="tools" id="daytools"></div>
+    </section>
+    <div class="side">
+    <section class="panel" aria-labelledby="clienthead">
+      <div class="panelhead"><h2 id="clienthead">Clients</h2><button class="btn primary" type="button" id="addclient">Add client</button></div>
+      <input class="search" id="csearch" type="search" placeholder="Search name, phone, email or address" aria-label="Search clients">
+      <ul class="clientlist" id="clientlist"></ul>
+    </section>
+    <section class="panel" aria-labelledby="smshead">
+      <div class="panelhead"><h2 id="smshead">Sent SMS</h2><span class="flabel" id="smscount"></span></div>
+      <ul class="smslist" id="smslist"></ul>
+      <button class="btn" type="button" id="smsmore" hidden>Show all</button>
+    </section>
+    <section class="panel" aria-labelledby="howhead">
+      <h2 id="howhead">How it works</h2>
+      <ul class="rules">
+        <li><strong>Time runs in 1-hour slots.</strong> Appointments start on the hour and last 1 to 4 hours.</li>
+        <li><strong>Default hours</strong> are <span class="defsummary"></span>. Change the default days and hours in <strong>Settings</strong>. Use <strong>Adjust hours</strong> to change a single day.</li>
+        <li><strong>Moving is allowed up to the day before.</strong> An appointment can be moved until the end of the previous day. On the day itself it's locked.</li>
+        <li>Drag an appointment to a red-outlined slot, or open it and choose <strong>Move</strong>.</li>
+        <li><strong>Link appointments to a job</strong> to track work on site. Set <strong>On site</strong> to Delayed to note it on the job, or to Client signed off to mark the job Completed, ready for the balance invoice.</li>
+      </ul>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--open)"></i>Open hour</span>
+        <span><i class="sw" style="background:var(--appt)"></i>Appointment</span>
+        <span><i class="sw" style="background:var(--appt);background-image:repeating-linear-gradient(135deg,transparent 0 3px,var(--hatch) 3px 6px)"></i>Locked</span>
+        <span><i class="sw" style="background:var(--target)"></i>Can move here</span>
+      </div>
+    </section>
+    </div>
+  </div>
+  </div>
+
+  <div class="view" id="jobsview" hidden>
+    <section class="stats four" aria-label="Jobs summary">
+      <div class="stat"><span class="k">Open quotes</span><span class="v" id="j-quotes">0</span><span class="target" id="j-quotes-sub"></span></div>
+      <div class="stat"><span class="k">Owed to you</span><span class="v" id="j-owed">$0</span><span class="target" id="j-owed-sub"></span></div>
+      <div class="stat"><span class="k">Overdue</span><span class="v" id="j-over">$0</span><span class="target" id="j-over-sub"></span></div>
+      <div class="stat"><span class="k">Reminders due</span><span class="v" id="j-rem">0</span><span class="target">V1 → V2 → V3, in order</span></div>
+    </section>
+    <section class="panel" aria-labelledby="acthead">
+      <div class="panelhead"><h2 id="acthead">Needs action</h2><button class="btn primary" type="button" id="newjob">New quote</button></div>
+      <ul class="actionlist" id="actionlist"></ul>
+    </section>
+    <section class="panel" aria-labelledby="loghead">
+      <div class="panelhead"><h2 id="loghead">Job log</h2>
+        <div class="seg" role="group" aria-label="Filter jobs" id="jfilter">
+          <button type="button" data-f="active" aria-pressed="true">Active</button>
+          <button type="button" data-f="quotes" aria-pressed="false">Quotes</button>
+          <button type="button" data-f="unpaid" aria-pressed="false">Unpaid</button>
+          <button type="button" data-f="closed" aria-pressed="false">Closed</button>
+          <button type="button" data-f="all" aria-pressed="false">All</button>
+        </div>
+      </div>
+      <input class="search" id="jsearch" type="search" placeholder="Search Job ID, client or job" aria-label="Search jobs">
+      <div class="tablebox"><table class="jobs" id="jobtable"></table></div>
+    </section>
+    <section class="panel" aria-labelledby="jrulehead">
+      <h2 id="jrulehead">Rules applied to every job</h2>
+      <ul class="rules" id="jrules"></ul>
+    </section>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <form class="sheet" id="form" novalidate>
+    <h2 id="f-head">New appointment</h2>
+    <div class="note" id="f-lock" hidden></div>
+    <div class="field"><label for="f-title">What</label><input id="f-title" maxlength="80" required placeholder="e.g. Kitchen quote"></div>
+    <div class="field"><label for="f-clientid">Client</label><div class="withrow"><select id="f-clientid"></select><button class="btn" type="button" id="f-newclient">New client</button></div></div>
+    <div class="row3" style="grid-template-columns:1fr 1fr">
+      <div class="field"><label for="f-job">Job</label><select id="f-job"></select></div>
+      <div class="field"><label for="f-status">On site</label><select id="f-status"><option>Scheduled</option><option>Delayed</option><option>Client signed off</option></select></div>
+    </div>
+    <div class="note" id="f-jobwarn" hidden></div>
+    <div class="row3">
+      <div class="field"><label for="f-date">Date</label><input id="f-date" type="date" required></div>
+      <div class="field"><label for="f-hour">Start</label><select id="f-hour"></select></div>
+      <div class="field"><label for="f-dur">Length</label><select id="f-dur">
+        <option value="1">1 hour</option><option value="2">2 hours</option><option value="3">3 hours</option><option value="4">4 hours</option>
+      </select></div>
+    </div>
+    <div class="field"><label for="f-notes">Notes</label><textarea id="f-notes" maxlength="1000"></textarea></div>
+    <div class="err" id="f-err" role="alert"></div>
+    <div class="actions">
+      <div class="r">
+        <button class="btn danger" type="button" id="f-delete" hidden>Cancel appointment</button>
+        <button class="btn" type="button" id="f-move" hidden>Move on grid</button>
+        <button class="btn" type="button" id="f-sms" hidden>Send SMS</button>
+      </div>
+      <div class="r">
+        <button class="btn" type="button" id="f-close">Close</button>
+        <button class="btn primary" type="submit" id="f-save">Save</button>
+      </div>
+    </div>
+  </form>
+</div>
+<div class="overlay" id="coverlay" hidden>
+  <div class="sheet" id="cview" role="dialog" aria-labelledby="cv-name">
+    <div class="ccard">
+      <h3 id="cv-name"></h3>
+      <dl>
+        <dt>Address</dt><dd id="cv-address"></dd><dd></dd>
+        <dt>Phone</dt><dd id="cv-phone"></dd><dd><button class="copy" type="button" data-copy="phone">Copy</button></dd>
+        <dt>Email</dt><dd id="cv-email"></dd><dd><button class="copy" type="button" data-copy="email">Copy</button></dd>
+      </dl>
+      <div class="note" id="cv-notes" hidden></div>
+    </div>
+    <div class="field"><span class="flabel">Appointments</span><ul class="alist" id="cv-appts"></ul></div>
+    <div class="field"><span class="flabel">Jobs</span><ul class="alist" id="cv-jobs"></ul></div>
+    <div class="actions">
+      <div class="r">
+        <button class="btn danger" type="button" id="cv-delete">Delete client</button>
+        <button class="btn" type="button" id="cv-edit">Edit details</button>
+        <button class="btn" type="button" id="cv-quote">New quote</button>
+      </div>
+      <div class="r">
+        <button class="btn" type="button" id="cv-close">Close</button>
+        <button class="btn primary" type="button" id="cv-book">Book appointment</button>
+      </div>
+    </div>
+  </div>
+  <form class="sheet" id="cform" novalidate hidden>
+    <h2 id="c-head">New client</h2>
+    <div class="field"><label for="c-name">Name</label><input id="c-name" maxlength="80" required autocomplete="off"></div>
+    <div class="field"><label for="c-address">Address</label><input id="c-address" maxlength="200" autocomplete="off"></div>
+    <div class="row3" style="grid-template-columns:1fr 1fr">
+      <div class="field"><label for="c-phone">Phone</label><input id="c-phone" type="tel" maxlength="40" autocomplete="off"></div>
+      <div class="field"><label for="c-email">Email</label><input id="c-email" type="email" maxlength="120" autocomplete="off"></div>
+    </div>
+    <div class="field"><label for="c-notes">Notes</label><textarea id="c-notes" maxlength="1000" placeholder="Gate code, parking, preferences"></textarea></div>
+    <div class="err" id="c-err" role="alert"></div>
+    <div class="actions">
+      <span></span>
+      <div class="r">
+        <button class="btn" type="button" id="c-cancel">Cancel</button>
+        <button class="btn primary" type="submit">Save client</button>
+      </div>
+    </div>
+  </form>
+</div>
+<div class="overlay" id="soverlay" hidden>
+  <form class="sheet wide" id="sform" novalidate>
+    <h2>Settings</h2>
+    <div class="field">
+      <span class="flabel">Default opening hours</span>
+      <div class="weektable" id="weektable"></div>
+    </div>
+    <p class="note" style="margin:0">These hours apply to every day you haven't adjusted by hand. Existing appointments stay where they are.</p>
+    <div class="field">
+      <label for="s-template">SMS message template</label>
+      <textarea id="s-template" maxlength="640" rows="4"></textarea>
+      <span class="flabel">Use {first}, {name}, {title}, {date} and {time}. They're filled in for each appointment.</span>
+    </div>
+    <div class="field">
+      <span class="flabel">Grid shows</span>
+      <div class="settings">
+        <label for="daystart">from</label><select id="daystart"></select>
+        <label for="dayend">to</label><select id="dayend"></select>
+      </div>
+    </div>
+    <div class="sec">
+      <h3>Jobs &amp; invoicing</h3>
+      <label class="check" for="s-gst" style="white-space:normal;color:var(--ink);font-size:14px"><input type="checkbox" id="s-gst">Registered for GST: amounts include 10% GST, shown separately on quotes and invoices</label>
+      <div class="grid3">
+        <div class="field"><label for="s-valid">Quotes valid for (days)</label><input id="s-valid" type="number" min="1" max="90" inputmode="numeric"></div>
+        <div class="field"><label for="s-dep">Deposit before start (%)</label><input id="s-dep" type="number" min="0" max="100" inputmode="numeric"></div>
+        <div class="field"><label for="s-terms">Invoices due after (days)</label><input id="s-terms" type="number" min="0" max="90" inputmode="numeric"></div>
+        <div class="field"><label for="s-v1">V1 nudge after invoice (days)</label><input id="s-v1" type="number" min="1" max="60" inputmode="numeric"></div>
+        <div class="field"><label for="s-v3">V3 final at overdue (days)</label><input id="s-v3" type="number" min="1" max="120" inputmode="numeric"></div>
+      </div>
+      <div class="field"><label for="s-pay">How to pay (added to every quote, invoice and reminder)</label><textarea id="s-pay" rows="3" maxlength="600" placeholder="e.g. Bank transfer to Mate Next Door, BSB [000-000], Account [00000000]"></textarea></div>
+      <div class="field"><label for="s-sig">Email sign-off</label><textarea id="s-sig" rows="4" maxlength="300"></textarea></div>
+    </div>
+    <div class="err" id="s-err" role="alert"></div>
+    <div class="actions">
+      <span></span>
+      <div class="r">
+        <button class="btn" type="button" id="s-cancel">Cancel</button>
+        <button class="btn primary" type="submit">Save settings</button>
+      </div>
+    </div>
+  </form>
+</div>
+<div class="overlay" id="moverlay" hidden>
+  <form class="sheet" id="mform" novalidate>
+    <h2>Text appointment details</h2>
+    <div class="note" id="m-about"></div>
+    <div class="field"><label for="m-phone">To <span id="m-name"></span></label><input id="m-phone" type="tel" maxlength="40" autocomplete="off"></div>
+    <div class="field"><label for="m-body">Message</label><textarea id="m-body" rows="5" maxlength="640"></textarea><span class="flabel" id="m-count"></span></div>
+    <p class="note" style="margin:0">Texts go from your phone. Tap <strong>Open in Messages</strong> and send it, then tap <strong>Mark as sent</strong> to add it to the sent list. If Messages doesn't open, copy the message and paste it into a text.</p>
+    <div class="err" id="m-err" role="alert"></div>
+    <div class="actions">
+      <div class="r">
+        <a class="btn" id="m-open" href="#">Open in Messages</a>
+        <button class="btn" type="button" id="m-copy">Copy message</button>
+      </div>
+      <div class="r">
+        <button class="btn" type="button" id="m-cancel">Cancel</button>
+        <button class="btn primary" type="submit">Mark as sent</button>
+      </div>
+    </div>
+  </form>
+</div>
+<div class="overlay" id="joverlay" hidden>
+  <form class="sheet wide" id="jform" novalidate>
+    <div class="panelhead"><h2 id="j-head">New quote</h2><span id="j-stage"></span></div>
+    <div class="nextact" id="j-next"></div>
+    <div class="row3" style="grid-template-columns:1fr 1fr">
+      <div class="field"><label for="j-client">Client</label><div class="withrow"><select id="j-client"></select><button class="btn" type="button" id="j-newclient">New client</button></div></div>
+      <div class="field"><label for="j-title">Job</label><input id="j-title" maxlength="100" placeholder="e.g. Replace 12 m of boundary fence"></div>
+    </div>
+    <div class="sec"><h3>1 · Quote <small id="j-expiry"></small></h3>
+      <div class="grid3">
+        <div class="field"><label for="j-qdate">Quote date</label><input id="j-qdate" type="date"></div>
+        <div class="field"><label for="j-qamt">Quoted amount<span class="gstlbl"> (inc. GST)</span></label><input id="j-qamt" inputmode="decimal" placeholder="0.00"></div>
+        <div class="field"><label for="j-qstatus">Quote status</label><select id="j-qstatus"><option>Sent</option><option>Pending</option><option>Accepted</option><option>Declined</option></select></div>
+      </div>
+      <div class="calc" id="j-gst"></div>
+      <div class="tools"><button class="btn" type="button" data-mail="quote">Email quote</button></div>
+    </div>
+    <div class="sec"><h3>2 · Accept + deposit <small id="j-deppct"></small></h3>
+      <div class="grid3">
+        <div class="field"><label for="j-damt">Deposit<span class="gstlbl"> (inc. GST)</span></label><input id="j-damt" inputmode="decimal" placeholder="0.00"></div>
+        <div class="field"><label for="j-ddate">Deposit invoice date</label><input id="j-ddate" type="date"></div>
+        <div class="field"><label for="j-dpaid">Deposit paid on</label><input id="j-dpaid" type="date"></div>
+      </div>
+      <div class="calc" id="j-dinfo"></div>
+      <div class="tools"><button class="btn" type="button" data-mail="deposit">Email deposit invoice</button></div>
+    </div>
+    <div class="sec"><h3>3 · Schedule + work</h3>
+      <div class="grid3">
+        <div class="field"><label for="j-start">Job start date</label><input id="j-start" type="date"></div>
+        <div class="field"><label for="j-status">Job status</label><select id="j-status"><option>Not started</option><option>In progress</option><option>Completed</option><option>Cancelled</option></select></div>
+        <div class="field"><label for="j-done">Completed on</label><input id="j-done" type="date"></div>
+      </div>
+      <div class="field"><span class="flabel">Appointments on this job</span><ul class="alist" id="j-appts"></ul></div>
+      <div class="tools"><button class="btn" type="button" id="j-book">Book work on the schedule</button></div>
+    </div>
+    <div class="sec"><h3>4 · Variations <small>Only variations approved in writing change the total</small></h3>
+      <ul class="varlist" id="j-vars"></ul>
+      <div class="tools"><button class="btn" type="button" id="j-addvar">Add variation</button></div>
+      <div class="calc" id="j-total"></div>
+    </div>
+    <div class="sec"><h3>5 · Balance invoice <small id="j-binv"></small></h3>
+      <div class="field" id="j-cancrow" hidden><label for="j-canc">Cancelled: work done + materials bought<span class="gstlbl"> (inc. GST)</span></label><input id="j-canc" inputmode="decimal" placeholder="0.00"></div>
+      <div class="grid3">
+        <div class="field"><label for="j-idate">Invoice date</label><input id="j-idate" type="date"></div>
+        <div class="field"><label for="j-due">Due date</label><input id="j-due" type="date"></div>
+        <div class="field"><label for="j-ipaid">Balance paid on</label><input id="j-ipaid" type="date"></div>
+      </div>
+      <div class="calc" id="j-binfo"></div>
+      <div class="tools"><button class="btn" type="button" data-mail="final">Email balance invoice</button></div>
+    </div>
+    <div class="sec"><h3>6 · Chase + close <small id="j-paid"></small></h3>
+      <div id="j-ladder"></div>
+    </div>
+    <div class="field"><label for="j-notes">Notes</label><textarea id="j-notes" maxlength="3000" placeholder="Variations agreed, delays, why a quote was declined, what happens to a deposit"></textarea></div>
+    <div class="err" id="j-err" role="alert"></div>
+    <div class="actions">
+      <div class="r"><button class="btn danger" type="button" id="j-delete" hidden>Delete job</button></div>
+      <div class="r">
+        <button class="btn" type="button" id="j-close">Close</button>
+        <button class="btn primary" type="submit">Save job</button>
+      </div>
+    </div>
+  </form>
+</div>
+<div class="overlay" id="eoverlay" hidden>
+  <form class="sheet wide" id="eform" novalidate>
+    <h2 id="e-head">Email</h2>
+    <div class="note" id="e-about"></div>
+    <div class="field"><label for="e-to">To</label><input id="e-to" type="email" maxlength="120" autocomplete="off"></div>
+    <div class="field"><label for="e-subj">Subject</label><input id="e-subj" maxlength="200"></div>
+    <div class="field"><label for="e-body">Message</label><textarea id="e-body" rows="14" maxlength="5000"></textarea></div>
+    <p class="note" style="margin:0">Emails go from your own mail app. Tap <strong>Open in Mail</strong> and send it, then tap <strong>Mark as sent</strong> so the job records it. If Mail doesn't open, copy the message instead.</p>
+    <div class="err" id="e-err" role="alert"></div>
+    <div class="actions">
+      <div class="r">
+        <a class="btn" id="e-open" href="#">Open in Mail</a>
+        <button class="btn" type="button" id="e-copy">Copy message</button>
+      </div>
+      <div class="r">
+        <button class="btn" type="button" id="e-cancel">Cancel</button>
+        <button class="btn primary" type="submit">Mark as sent</button>
+      </div>
+    </div>
+  </form>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+<div class="overlay" id="loverlay" hidden>
+  <form class="sheet" id="lform" novalidate>
+    <h2>Sign in</h2>
+    <p class="note" style="margin:0">The planner holds client details, so it's for Mate Next Door only.</p>
+    <div class="field"><label for="l-email">Email</label><input id="l-email" type="email" autocomplete="username" maxlength="120"></div>
+    <div class="field"><label for="l-pass">Password</label><input id="l-pass" type="password" autocomplete="current-password" maxlength="200"></div>
+    <div class="err" id="l-err" role="alert"></div>
+    <div class="actions">
+      <button class="btn" type="button" id="l-reset">Forgot password</button>
+      <button class="btn primary" type="submit">Sign in</button>
+    </div>
+  </form>
+  <form class="sheet" id="pform" novalidate hidden>
+    <h2>Set a new password</h2>
+    <div class="field"><label for="p-pass">New password</label><input id="p-pass" type="password" autocomplete="new-password" minlength="8" maxlength="200"></div>
+    <div class="err" id="p-err" role="alert"></div>
+    <div class="actions"><span></span><button class="btn primary" type="submit">Save password</button></div>
+  </form>
+</div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const pad = (n) => String(n).padStart(2, "0");
+  const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const parse = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+  const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return ymd(d); };
+  const mondayOf = (s) => { const d = parse(s); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return ymd(d); };
+  const fmtH = (h) => { const x = h % 24; return `${x % 12 || 12} ${x < 12 ? "am" : "pm"}`; };
+  const fmtRange = (h, dur) => `${fmtH(h)} – ${fmtH(h + dur)}`;
+  const fmtDay = (s) => parse(s).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" });
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const range = (a, b) => Array.from({ length: Math.max(0, b - a) }, (_, i) => a + i);
+
+  const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  const DEFAULT_SMS = "Hi {first}, this is Will confirming your appointment for {title} on {date} at {time}. Please reply if you need to change it. Thanks!";
+  function defaultWeek() { return WEEKDAYS.map((_, i) => ({ open: i < 5, start: 10, end: 20 })); }
+  const JOB_DEFAULTS = JobRules.DEFAULTS;
+
+  let today = ymd(new Date());
+  let nowHour = new Date().getHours();
+
+  const S = {
+    settings: { dayStart: 10, dayEnd: 20, week: defaultWeek(), smsTemplate: DEFAULT_SMS },
+    hours: {},          // date -> Set of open hours; dates not listed use the weekday defaults in settings.week
+    appts: {},          // id -> {id,title,clientId,client,jobId,status,date,hour,duration,notes}
+    clients: {},        // id -> {id,name,address,phone,email,notes}
+    sms: [],            // sent-message log, newest first
+    jobs: {},           // Job ID (MND-YYYY-NNN) -> job record, quote through payment
+    jobcfg: { ...JOB_DEFAULTS },
+    view: "plan",
+    jfilter: "active",
+    weekStart: mondayOf(today),
+    selected: today,
+    mode: "book",
+    moving: null,
+    editing: null,
+  };
+  let db = null;
+
+  /* ---------- rules ---------- */
+  const weekdayIdx = (date) => (parse(date).getDay() + 6) % 7; // 0 = Monday
+  let weekSets = [];
+  function buildWeekSets() { weekSets = S.settings.week.map((w) => new Set(w.open ? range(w.start, w.end) : [])); }
+  buildWeekSets();
+  const hoursOf = (date) => S.hours[date] || weekSets[weekdayIdx(date)];
+  function weekSummary() {
+    const label = (w) => (w.open ? fmtRange(w.start, w.end - w.start) : "closed");
+    const groups = [];
+    S.settings.week.forEach((w, i) => {
+      const g = groups[groups.length - 1];
+      if (g && g.label === label(w)) g.to = i; else groups.push({ from: i, to: i, label: label(w) });
+    });
+    const name = (i) => WEEKDAYS[i].slice(0, 3);
+    return groups.map((g) => `${g.from === g.to ? name(g.from) : name(g.from) + "–" + name(g.to)} ${g.label}`).join(", ");
+  }
+  const isOpen = (date, h) => hoursOf(date).has(h);
+  const isPast = (date, h) => date < today || (date === today && h < nowHour);
+  const isLocked = (a) => a.date <= today;
+  const clientName = (a) => (a.clientId && S.clients[a.clientId] ? S.clients[a.clientId].name : a.client) || "";
+  const sortedClients = () => Object.values(S.clients).sort((x, y) => x.name.localeCompare(y.name));
+  const lastChangeDay = (a) => fmtDay(addDays(a.date, -1));
+  function occupancy(excludeId) {
+    const m = new Map();
+    for (const a of Object.values(S.appts)) {
+      if (a.id === excludeId) continue;
+      for (let i = 0; i < a.duration; i++) m.set(a.date + "|" + (a.hour + i), a.id);
+    }
+    return m;
+  }
+  function slotError(date, hour, dur, excludeId) {
+    if (!date) return "Choose a date.";
+    if (hour + dur > 24) return "That runs past midnight. Pick an earlier start or a shorter length.";
+    if (isPast(date, hour)) return "That time has already passed.";
+    const occ = occupancy(excludeId);
+    for (let h = hour; h < hour + dur; h++) {
+      if (!isOpen(date, h)) return `${fmtH(h)} on ${fmtDay(date)} is closed. Open it in Adjust hours first.`;
+      const other = occ.get(date + "|" + h);
+      if (other) return `That overlaps “${S.appts[other].title}” at ${fmtH(h)}.`;
+    }
+    return null;
+  }
+  function moveError(a, date, hour, dur = a.duration) {
+    if (isLocked(a)) return `This appointment is locked. Its time could be changed until the end of ${lastChangeDay(a)}.`;
+    if (date <= today) return "Appointments can be moved to tomorrow or later. Same-day changes are closed.";
+    return slotError(date, hour, dur, a.id);
+  }
+
+  /* ---------- saving ---------- */
+  const queues = new Map();
+  function queueWrite(path, fn) {
+    const p = (queues.get(path) || Promise.resolve()).then(fn).catch(writeFailed);
+    queues.set(path, p);
+    return p;
+  }
+  function writeFailed(e) {
+    const code = e && e.code;
+    if (code === "invalid_argument") toast("You don't have permission to change this schedule.");
+    else if (code === "quota_exceeded") toast("Storage is full. Cancel some old appointments, then try again.");
+    else toast("Couldn't save that change. Check your connection and try again.");
+  }
+  const pendingDates = new Set();
+  let hoursTimer = null;
+  function markHours(date) { pendingDates.add(date); clearTimeout(hoursTimer); hoursTimer = setTimeout(flushHours, 450); }
+  function flushHours() {
+    if (!db) { pendingDates.clear(); return; }
+    for (const date of [...pendingDates]) {
+      const custom = S.hours[date];
+      queueWrite("hours/" + date, () => custom
+        ? db.doc("hours/" + date).set({ date, slots: [...custom].sort((a, b) => a - b) })
+        : db.doc("hours/" + date).delete()
+      ).finally(() => pendingDates.delete(date));
+    }
+  }
+  function saveAppt(a) {
+    S.appts[a.id] = a;
+    if (db) queueWrite("appointments/" + a.id, () => db.doc("appointments/" + a.id).set({
+      title: a.title, clientId: a.clientId || "", client: a.client || "", jobId: a.jobId || "", status: a.status || "Scheduled",
+      date: a.date, hour: a.hour, duration: a.duration, notes: a.notes,
+    }));
+  }
+  function saveClient(c) {
+    S.clients[c.id] = c;
+    if (db) queueWrite("clients/" + c.id, () => db.doc("clients/" + c.id).set({
+      name: c.name, address: c.address, phone: c.phone, email: c.email, notes: c.notes,
+    }));
+  }
+  function removeClient(id) {
+    delete S.clients[id];
+    if (db) queueWrite("clients/" + id, () => db.doc("clients/" + id).delete());
+  }
+  function removeAppt(id) {
+    delete S.appts[id];
+    if (db) queueWrite("appointments/" + id, () => db.doc("appointments/" + id).delete());
+  }
+  function saveSettings() {
+    if (db) queueWrite("config/settings", () => db.doc("config/settings").set({ ...S.settings }));
+  }
+  const newId = () => "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  /* ---------- render ---------- */
+  const weekDays = () => range(0, 7).map((i) => addDays(S.weekStart, i));
+  function weekStats() {
+    const days = weekDays();
+    let alloc = 0, booked = 0, free = 0;
+    const occ = occupancy();
+    for (const d of days) {
+      for (const h of hoursOf(d)) { alloc++; if (!occ.has(d + "|" + h)) free++; }
+    }
+    for (const a of Object.values(S.appts)) if (days.includes(a.date)) booked += a.duration;
+    return { alloc, booked, free };
+  }
+
+  function render() {
+    const jobs = S.view === "jobs";
+    $("#planview").hidden = jobs; $("#jobsview").hidden = !jobs;
+    $("#v-plan").setAttribute("aria-pressed", !jobs); $("#v-jobs").setAttribute("aria-pressed", jobs);
+    for (const id of ["#prev", "#thisweek", "#next"]) $(id).hidden = jobs;
+    renderClients();
+    if (jobs) { $("#weeklabel").textContent = "Quote → deposit → work → invoice → paid, one Job ID per job"; renderJobs(); return; }
+    const days = weekDays();
+    const end = addDays(S.weekStart, 6);
+    const ps = parse(S.weekStart), pe = parse(end);
+    $("#weeklabel").textContent = `Week of ${ps.toLocaleDateString("en-AU", { day: "numeric", month: "short" })} – ${pe.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}`;
+    $("#thisweek").disabled = S.weekStart === mondayOf(today);
+
+    const st = weekStats();
+    $("#s-alloc").textContent = st.alloc + " h";
+    $("#s-booked").textContent = st.booked + " h";
+    $("#s-free").textContent = st.free + " h";
+
+    document.body.classList.toggle("mode-alloc", S.mode === "alloc");
+    document.body.classList.toggle("mode-book", S.mode === "book");
+    $("#m-book").setAttribute("aria-pressed", S.mode === "book");
+    $("#m-alloc").setAttribute("aria-pressed", S.mode === "alloc");
+    $("#alloctools").hidden = S.mode !== "alloc";
+    $("#hint").textContent = S.mode === "alloc"
+      ? "Optional: click or drag across the grid to close time off or open extra hours. Past days can't be changed."
+      : "Click an open hour to book it. Click an appointment to edit, move or cancel it.";
+
+    const mv = S.moving && S.appts[S.moving];
+    for (const el of document.querySelectorAll(".defsummary")) el.textContent = weekSummary();
+    $("#movebanner").hidden = !mv;
+    if (mv) $("#movetext").textContent = `Moving “${mv.title}” (${mv.duration} h). Pick a red-outlined slot, tomorrow or later.`;
+
+    renderGrid(days);
+    renderDay();
+    renderSms();
+  }
+
+  function renderGrid(days) {
+    let lo = S.settings.dayStart, hi = S.settings.dayEnd;
+    for (const d of days) { const hs = hoursOf(d); if (hs.size) { lo = Math.min(lo, ...hs); hi = Math.max(hi, Math.max(...hs) + 1); } }
+    for (const a of Object.values(S.appts)) if (days.includes(a.date)) { lo = Math.min(lo, a.hour); hi = Math.max(hi, a.hour + a.duration); }
+    const occ = occupancy();
+    const covered = new Set();
+    let html = `<colgroup><col class="hcol">${days.map(() => "<col>").join("")}</colgroup><thead><tr><th class="corner" scope="col"><span class="dname" style="padding-left:8px">Hour</span></th>`;
+    for (const d of days) {
+      const open = hoursOf(d).size;
+      const booked = Object.values(S.appts).filter((a) => a.date === d).reduce((n, a) => n + a.duration, 0);
+      const dt = parse(d);
+      html += `<th class="dayh${d === today ? " today" : ""}${d === S.selected ? " sel" : ""}" scope="col">
+        <button type="button" class="daybtn" data-day="${d}" aria-label="Show ${fmtDay(d)}">
+          <span class="dname">${dt.toLocaleDateString("en-AU", { weekday: "short" })}${d === today ? " · today" : ""}</span>
+          <span class="dnum">${dt.getDate()}</span>
+          <span class="dmeta">${open}h open · ${booked}h booked</span>
+        </button></th>`;
+    }
+    html += "</tr></thead><tbody>";
+    for (let h = lo; h < hi; h++) {
+      html += `<tr><th class="hr" scope="row">${fmtH(h)}</th>`;
+      for (const d of days) {
+        const key = d + "|" + h;
+        if (covered.has(key)) continue;
+        const aid = occ.get(key);
+        const a = aid && S.appts[aid];
+        if (a && a.hour === h) {
+          const span = Math.min(a.duration, hi - h);
+          for (let i = 1; i < span; i++) covered.add(d + "|" + (h + i));
+          const locked = isLocked(a);
+          const outside = range(a.hour, a.hour + a.duration).some((x) => !isOpen(a.date, x));
+          html += `<td class="apptcell" rowspan="${span}"><div class="appt${locked ? " locked" : ""}${outside ? " outside" : ""}${S.moving === a.id ? " moving" : ""}"
+            data-id="${a.id}" draggable="${!locked && S.mode === "book"}" tabindex="0" role="button"
+            aria-label="${esc(a.title)}, ${fmtDay(a.date)} ${fmtRange(a.hour, a.duration)}${locked ? ", locked" : ""}">
+            <span class="atime">${fmtRange(a.hour, a.duration)}</span>
+            <strong>${esc(a.title)}</strong>
+            ${clientName(a) ? `<span class="awith">${esc(clientName(a))}</span>` : ""}
+            ${a.jobId ? `<span class="awith">${esc(a.jobId)}</span>` : ""}
+            ${a.status && a.status !== "Scheduled" ? `<span class="tag">${esc(a.status)}</span>` : locked ? `<span class="tag">Locked</span>` : outside ? `<span class="tag">Outside open hours</span>` : ""}
+          </div></td>`;
+        } else {
+          html += `<td class="cell${isOpen(d, h) ? " avail" : ""}${isPast(d, h) ? " past" : ""}${d < today ? " lockedday" : ""}" data-date="${d}" data-hour="${h}"></td>`;
+        }
+      }
+      html += "</tr>";
+    }
+    html += "</tbody>";
+    $("#grid").innerHTML = html;
+    markTargets();
+  }
+
+  function markTargets() {
+    const a = S.moving && S.appts[S.moving];
+    for (const td of document.querySelectorAll("#grid td.cell")) {
+      const ok = !!a && !moveError(a, td.dataset.date, +td.dataset.hour);
+      td.classList.toggle("target", ok);
+    }
+  }
+
+  function renderDay() {
+    const d = S.selected;
+    const open = hoursOf(d);
+    const appts = Object.values(S.appts).filter((a) => a.date === d).sort((x, y) => x.hour - y.hour);
+    $("#dayhead").innerHTML = `${esc(parse(d).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" }))}<small>${open.size} h open</small>`;
+    const items = [];
+    const starts = new Map(appts.map((a) => [a.hour, a]));
+    const occ = occupancy();
+    let h = 0;
+    while (h < 24) {
+      const a = starts.get(h);
+      if (a) { items.push({ kind: "ap", a }); h += a.duration; continue; }
+      if (open.has(h) && !occ.has(d + "|" + h)) {
+        let e = h;
+        while (e < 24 && open.has(e) && !occ.has(d + "|" + e)) e++;
+        items.push({ kind: "free", h, len: e - h });
+        h = e; continue;
+      }
+      h++;
+    }
+    const ul = $("#runsheet");
+    if (!items.length) {
+      ul.innerHTML = `<li class="empty" style="display:block;padding:0">${S.hours[d] ? "This day is closed. Reset it below to go back to the default hours." : "This day is closed by default. Open it below, or change the default days in Settings."}</li>`;
+    } else {
+      ul.innerHTML = items.map((it) => {
+        if (it.kind === "free") {
+          const bookable = range(it.h, it.h + it.len).filter((x) => !isPast(d, x));
+          return `<li class="free"><span class="t">${fmtRange(it.h, it.len)}</span><span>Free · ${it.len} h</span>
+            ${bookable.length && S.mode === "book" ? `<button class="btn" type="button" data-book="${bookable[0]}">Book</button>` : "<span></span>"}</li>`;
+        }
+        const a = it.a;
+        const outside = range(a.hour, a.hour + a.duration).some((x) => !open.has(x));
+        return `<li class="ap"><span class="t">${fmtRange(a.hour, a.duration)}</span>
+          <span><strong>${esc(a.title)}</strong>${clientName(a) ? ` <span class="sub">with ${a.clientId && S.clients[a.clientId] ? `<button type="button" class="linkbtn" data-client="${a.clientId}">${esc(clientName(a))}</button>` : esc(clientName(a))}</span>` : ""}
+          ${isLocked(a) ? `<br><span class="sub">Locked: changes closed after ${esc(lastChangeDay(a))}</span>` : `<br><span class="sub">Movable until end of ${esc(lastChangeDay(a))}</span>`}
+          ${outside ? `<br><span class="warn">Outside open hours</span>` : ""}
+          ${a.jobId ? `<br><span class="sub">Job <button type="button" class="linkbtn" data-job="${esc(a.jobId)}">${esc(a.jobId)}</button> · ${esc(a.status || "Scheduled")}</span>` : ""}
+          ${smsStatus(a)}</span>
+          <span class="rbtns">${isUpcoming(a) ? `<button class="btn" type="button" data-sms="${a.id}">SMS</button>` : ""}<button class="btn" type="button" data-open="${a.id}">Open</button></span></li>`;
+      }).join("");
+    }
+    const tools = $("#daytools");
+    tools.innerHTML = d >= today
+      ? `${S.hours[d] ? `<button class="btn" type="button" id="std">Reset to default hours</button>` : ""}${open.size ? `<button class="btn" type="button" id="closeday">Close this day</button>` : `<button class="btn" type="button" id="openday">Open this day</button>`}`
+      : "";
+  }
+
+  function renderClients() {
+    const q = $("#csearch").value.trim().toLowerCase();
+    const all = sortedClients();
+    const list = all.filter((c) => !q || [c.name, c.phone, c.email, c.address].some((v) => (v || "").toLowerCase().includes(q)));
+    $("#clientlist").innerHTML = list.length
+      ? list.map((c) => `<li><button type="button" data-client="${c.id}"><span class="cn">${esc(c.name)}</span><span class="cp">${esc(c.phone)}</span></button></li>`).join("")
+      : `<li class="empty">${all.length ? "No clients match that search." : "No clients yet. Add one to keep their address, phone and email on file."}</li>`;
+  }
+
+  /* ---------- toast ---------- */
+  let toastTimer;
+  function toast(msg) {
+    const t = $("#toast");
+    t.textContent = msg; t.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 3800);
+  }
+
+  /* ---------- allocation ---------- */
+  function setHour(date, h, on) {
+    if (date < today) return false;
+    const occ = occupancy();
+    if (!on && occ.has(date + "|" + h)) { toast("That hour has an appointment. Move or cancel it first."); return false; }
+    const set = S.hours[date] || (S.hours[date] = new Set(hoursOf(date)));
+    if (set.has(h) === on) return false;
+    on ? set.add(h) : set.delete(h);
+    markHours(date);
+    return true;
+  }
+  let paint = null;
+  function cellAt(x, y) { const el = document.elementFromPoint(x, y); return el && el.closest && el.closest("#grid td.cell"); }
+  $("#grid").addEventListener("pointerdown", (e) => {
+    if (S.mode !== "alloc") return;
+    const td = e.target.closest("td.cell");
+    if (!td) return;
+    if (td.dataset.date < today) { toast("Past days can't be changed."); return; }
+    e.preventDefault();
+    paint = { on: !isOpen(td.dataset.date, +td.dataset.hour), touched: new Set() };
+    applyPaint(td);
+  });
+  function applyPaint(td) {
+    const k = td.dataset.date + "|" + td.dataset.hour;
+    if (paint.touched.has(k)) return;
+    paint.touched.add(k);
+    if (setHour(td.dataset.date, +td.dataset.hour, paint.on)) td.classList.toggle("avail", paint.on);
+  }
+  window.addEventListener("pointermove", (e) => {
+    if (!paint) return;
+    const td = cellAt(e.clientX, e.clientY);
+    if (td && td.dataset.date >= today) applyPaint(td);
+  });
+  window.addEventListener("pointerup", () => { if (paint) { paint = null; render(); } });
+  window.addEventListener("pointercancel", () => { if (paint) { paint = null; render(); } });
+
+  /* ---------- grid clicks ---------- */
+  $("#grid").addEventListener("click", (e) => {
+    const day = e.target.closest(".daybtn");
+    if (day) { S.selected = day.dataset.day; render(); return; }
+    if (S.mode !== "book") return;
+    const ap = e.target.closest(".appt");
+    if (ap) {
+      if (S.moving === ap.dataset.id) { S.moving = null; render(); return; }
+      if (S.moving) { toast("That slot is taken. Pick a red-outlined slot."); return; }
+      openForm(ap.dataset.id); return;
+    }
+    const td = e.target.closest("td.cell");
+    if (!td) return;
+    const date = td.dataset.date, h = +td.dataset.hour;
+    if (S.moving) { tryMove(S.moving, date, h); return; }
+    if (isPast(date, h)) { toast("That hour has already passed."); return; }
+    if (!isOpen(date, h)) { toast("That hour is closed. Use Adjust hours to open it."); return; }
+    openForm(null, date, h);
+  });
+  $("#grid").addEventListener("keydown", (e) => {
+    if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("appt")) { e.preventDefault(); e.target.click(); }
+  });
+
+  function tryMove(id, date, h) {
+    const a = S.appts[id];
+    if (!a) { S.moving = null; render(); return; }
+    const err = moveError(a, date, h);
+    if (err) { toast(err); return; }
+    saveAppt({ ...a, date, hour: h });
+    S.moving = null;
+    S.selected = date;
+    toast(`Moved to ${fmtDay(date)}, ${fmtRange(h, a.duration)}.`);
+    render();
+  }
+
+  /* drag to move (desktop) */
+  let dragMoved = false;
+  $("#grid").addEventListener("dragstart", (e) => {
+    const ap = e.target.closest(".appt");
+    if (!ap || ap.getAttribute("draggable") !== "true") return;
+    S.moving = ap.dataset.id; dragMoved = false;
+    e.dataTransfer.setData("text/plain", ap.dataset.id);
+    e.dataTransfer.effectAllowed = "move";
+    ap.classList.add("moving");
+    markTargets();
+  });
+  $("#grid").addEventListener("dragover", (e) => {
+    const td = e.target.closest("td.cell.target");
+    if (td) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }
+  });
+  $("#grid").addEventListener("dragenter", (e) => { const td = e.target.closest("td.cell.target"); if (td) td.classList.add("dropover"); });
+  $("#grid").addEventListener("dragleave", (e) => { const td = e.target.closest("td.cell"); if (td) td.classList.remove("dropover"); });
+  $("#grid").addEventListener("drop", (e) => {
+    const td = e.target.closest("td.cell.target");
+    if (!td || !S.moving) return;
+    e.preventDefault(); dragMoved = true;
+    tryMove(S.moving, td.dataset.date, +td.dataset.hour);
+  });
+  $("#grid").addEventListener("dragend", () => { if (!dragMoved) { S.moving = null; render(); } });
+
+  /* ---------- run-sheet & day tools ---------- */
+  $("#runsheet").addEventListener("click", (e) => {
+    const m = e.target.closest("[data-sms]");
+    if (m) { openSms(m.dataset.sms); return; }
+    const jb = e.target.closest("[data-job]");
+    if (jb) { openJob(jb.dataset.job); return; }
+    const c = e.target.closest("[data-client]");
+    if (c) { openClient(c.dataset.client); return; }
+    const b = e.target.closest("[data-book]");
+    if (b) openForm(null, S.selected, +b.dataset.book);
+    const o = e.target.closest("[data-open]");
+    if (o) openForm(o.dataset.open);
+  });
+  $("#daytools").addEventListener("click", (e) => {
+    if (e.target.id === "std") { resetDay(S.selected); render(); toast(`${fmtDay(S.selected)} is back to its default hours.`); }
+    if (e.target.id === "openday") {
+      const w = S.settings.week[weekdayIdx(S.selected)];
+      S.hours[S.selected] = new Set(range(w.start, w.end));
+      markHours(S.selected); render();
+      toast(`Opened ${fmtDay(S.selected)}, ${fmtRange(w.start, w.end - w.start)}.`);
+    }
+    if (e.target.id === "closeday") {
+      const occ = occupancy();
+      let kept = 0;
+      for (const h of [...hoursOf(S.selected)]) { if (occ.has(S.selected + "|" + h)) kept++; else setHour(S.selected, h, false); }
+      render();
+      toast(kept ? `Closed free hours. ${kept} h with appointments stay open.` : `Closed all hours on ${fmtDay(S.selected)}.`);
+    }
+  });
+
+  /* ---------- toolbar ---------- */
+  function setMode(m) { S.mode = m; S.moving = null; render(); }
+  $("#m-book").onclick = () => setMode("book");
+  $("#m-alloc").onclick = () => setMode("alloc");
+  $("#prev").onclick = () => { S.weekStart = addDays(S.weekStart, -7); S.selected = S.weekStart; render(); };
+  $("#next").onclick = () => { S.weekStart = addDays(S.weekStart, 7); S.selected = S.weekStart; render(); };
+  $("#thisweek").onclick = () => { S.weekStart = mondayOf(today); S.selected = today; render(); };
+  $("#movecancel").onclick = () => { S.moving = null; render(); };
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (!$("#eoverlay").hidden) closeMail();
+    else if (!$("#moverlay").hidden) closeSms();
+    else if (!$("#soverlay").hidden) closeSettings();
+    else if (!$("#coverlay").hidden) closeClient();
+    else if (!$("#joverlay").hidden) closeJob();
+    else if (!$("#overlay").hidden) closeForm();
+    else if (S.moving) { S.moving = null; render(); }
+  });
+  function resetDay(date) {
+    if (date < today || !S.hours[date]) return false;
+    delete S.hours[date];
+    markHours(date);
+    return true;
+  }
+  $("#resetweek").onclick = () => {
+    const n = weekDays().filter(resetDay).length;
+    render();
+    toast(n ? `Reset ${n} day${n > 1 ? "s" : ""} to default hours.` : "This week already uses the default hours.");
+  };
+  function fillHourSelects() {
+    $("#daystart").innerHTML = range(0, 23).map((h) => `<option value="${h}">${fmtH(h)}</option>`).join("");
+    $("#dayend").innerHTML = range(1, 25).map((h) => `<option value="${h}">${fmtH(h)}</option>`).join("");
+    $("#daystart").value = S.settings.dayStart; $("#dayend").value = S.settings.dayEnd;
+  }
+
+  /* ---------- settings ---------- */
+  const hourOpts = (from, to) => range(from, to).map((h) => `<option value="${h}">${fmtH(h)}</option>`).join("");
+  function openSettings() {
+    fillHourSelects();
+    $("#weektable").innerHTML = WEEKDAYS.map((n, i) => `
+      <label for="w-open-${i}"><input type="checkbox" id="w-open-${i}" data-day="${i}">${n}</label>
+      <select id="w-start-${i}" aria-label="${n} opens">${hourOpts(0, 24)}</select>
+      <span class="to">to</span>
+      <select id="w-end-${i}" aria-label="${n} closes">${hourOpts(1, 25)}</select>`).join("");
+    S.settings.week.forEach((w, i) => {
+      $("#w-open-" + i).checked = w.open;
+      $("#w-start-" + i).value = w.start; $("#w-end-" + i).value = w.end;
+      $("#w-start-" + i).disabled = $("#w-end-" + i).disabled = !w.open;
+    });
+    $("#s-template").value = S.settings.smsTemplate;
+    const jc = S.jobcfg;
+    $("#s-gst").checked = jc.gst;
+    $("#s-valid").value = jc.validDays; $("#s-dep").value = jc.depositPct; $("#s-terms").value = jc.terms;
+    $("#s-v1").value = jc.v1Days; $("#s-v3").value = jc.v3Days; $("#s-pay").value = jc.payHow; $("#s-sig").value = jc.signoff;
+    $("#s-err").textContent = "";
+    $("#soverlay").hidden = false;
+    $("#w-open-0").focus();
+  }
+  function closeSettings() { $("#soverlay").hidden = true; }
+  $("#opensettings").onclick = openSettings;
+  $("#s-cancel").onclick = closeSettings;
+  $("#soverlay").addEventListener("click", (e) => { if (e.target.id === "soverlay") closeSettings(); });
+  $("#weektable").addEventListener("change", (e) => {
+    const i = e.target.dataset.day;
+    if (i !== undefined) $("#w-start-" + i).disabled = $("#w-end-" + i).disabled = !e.target.checked;
+  });
+  $("#sform").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const week = WEEKDAYS.map((_, i) => ({ open: $("#w-open-" + i).checked, start: +$("#w-start-" + i).value, end: +$("#w-end-" + i).value }));
+    const bad = week.findIndex((w) => w.open && w.end <= w.start);
+    if (bad >= 0) { $("#s-err").textContent = `${WEEKDAYS[bad]} closes before it opens. Pick a later closing time.`; return; }
+    const dayStart = +$("#daystart").value, dayEnd = +$("#dayend").value;
+    if (dayEnd <= dayStart) { $("#s-err").textContent = "The grid's end time must be after its start time."; return; }
+    const smsTemplate = $("#s-template").value.trim() || DEFAULT_SMS;
+    const int = (id) => { const v = $(id).value.trim(); return /^\d+$/.test(v) ? +v : NaN; };
+    const jc = { gst: $("#s-gst").checked, validDays: int("#s-valid"), depositPct: int("#s-dep"), terms: int("#s-terms"), v1Days: int("#s-v1"), v3Days: int("#s-v3"),
+      payHow: $("#s-pay").value.trim(), signoff: $("#s-sig").value.trim() || JOB_DEFAULTS.signoff };
+    if ([jc.validDays, jc.depositPct, jc.terms, jc.v1Days, jc.v3Days].some((n) => !Number.isInteger(n))) { $("#s-err").textContent = "Enter whole numbers for the job and invoicing days and the deposit percentage."; return; }
+    if (jc.depositPct > 100) { $("#s-err").textContent = "The deposit can't be more than 100%."; return; }
+    if (jc.validDays < 1 || jc.v1Days < 1 || jc.v3Days < 1) { $("#s-err").textContent = "Quote validity and reminder timings must be at least 1 day."; return; }
+    S.settings = { dayStart, dayEnd, week, smsTemplate };
+    S.jobcfg = jc;
+    if (db) queueWrite("config/jobs", () => db.doc("config/jobs").set({ ...jc }));
+    buildWeekSets(); saveSettings(); closeSettings(); render();
+    toast("Settings saved.");
+  });
+
+  /* ---------- appointment form ---------- */
+  $("#f-hour").innerHTML = range(0, 24).map((h) => `<option value="${h}">${fmtH(h)}</option>`).join("");
+  let deleteArmed = null;
+  function openForm(id, date, hour) {
+    const a = id ? S.appts[id] : null;
+    S.editing = id;
+    $("#f-head").textContent = a ? "Appointment" : "New appointment";
+    $("#f-title").value = a ? a.title : "";
+    fillClientSelect(a ? a.clientId || "" : "");
+    $("#f-date").value = a ? a.date : date;
+    $("#f-hour").value = a ? a.hour : hour;
+    $("#f-dur").value = a ? a.duration : 1;
+    $("#f-notes").value = a ? a.notes || "" : "";
+    fillJobSelect(a ? a.clientId || "" : "", a ? a.jobId || "" : "");
+    $("#f-status").value = a && a.status ? a.status : "Scheduled";
+    updateApptJob();
+    $("#f-err").textContent = "";
+    const locked = a && isLocked(a);
+    for (const f of ["#f-date", "#f-hour", "#f-dur"]) $(f).disabled = !!locked;
+    $("#f-lock").hidden = !a;
+    if (a) $("#f-lock").textContent = locked
+      ? `Locked. The time could be changed until the end of ${lastChangeDay(a)}. You can still edit the details and notes.`
+      : `You can move this until the end of ${lastChangeDay(a)}.`;
+    $("#f-delete").hidden = !a;
+    $("#f-move").hidden = !a || locked;
+    $("#f-sms").hidden = !a || !isUpcoming(a);
+    resetDelete();
+    $("#overlay").hidden = false;
+    $("#f-title").focus();
+  }
+  function closeForm() { $("#overlay").hidden = true; S.editing = null; resetDelete(); }
+  function resetDelete() { clearTimeout(deleteArmed); deleteArmed = null; const b = $("#f-delete"); b.classList.remove("armed"); b.textContent = "Cancel appointment"; }
+  $("#f-close").onclick = closeForm;
+  $("#overlay").addEventListener("click", (e) => { if (e.target.id === "overlay") closeForm(); });
+  $("#f-move").onclick = () => { S.mode = "book"; S.moving = S.editing; closeForm(); render(); };
+  $("#f-delete").onclick = () => {
+    const b = $("#f-delete");
+    if (!deleteArmed) { b.classList.add("armed"); b.textContent = "Confirm cancel"; deleteArmed = setTimeout(resetDelete, 4000); return; }
+    const a = S.appts[S.editing];
+    removeAppt(S.editing); closeForm(); render();
+    if (a) toast(`Cancelled “${a.title}”.`);
+  };
+  $("#form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const title = $("#f-title").value.trim();
+    if (!title) { $("#f-err").textContent = "Give the appointment a name."; $("#f-title").focus(); return; }
+    const date = $("#f-date").value, hour = +$("#f-hour").value, duration = +$("#f-dur").value;
+    const clientId = $("#f-clientid").value;
+    const prev = S.editing && S.appts[S.editing];
+    const client = clientId && S.clients[clientId] ? S.clients[clientId].name : (prev && !prev.clientId ? prev.client : "");
+    const jobId = $("#f-job").value;
+    const job = jobId && S.jobs[jobId];
+    const status = job ? $("#f-status").value : "Scheduled";
+    const base = { title, clientId, client, jobId: job ? jobId : "", status, notes: $("#f-notes").value.trim() };
+    const a = S.editing && S.appts[S.editing];
+    const prevStatus = (a && a.status) || "Scheduled";
+    const jobErr = apptJobError(job, status, prevStatus, date, !a || a.jobId !== base.jobId);
+    if (jobErr) { $("#f-err").textContent = jobErr; return; }
+    if (a) {
+      const timeChanged = a.date !== date || a.hour !== hour || a.duration !== duration;
+      if (timeChanged) {
+        const err = moveError(a, date, hour, duration);
+        if (err) { $("#f-err").textContent = err; return; }
+      }
+      saveAppt({ ...a, ...base, date, hour, duration });
+      toast(timeChanged ? `Moved to ${fmtDay(date)}, ${fmtRange(hour, duration)}.` : "Saved.");
+    } else {
+      const err = slotError(date, hour, duration, null);
+      if (err) { $("#f-err").textContent = err; return; }
+      saveAppt({ id: newId(), ...base, date, hour, duration });
+      toast(`Booked ${fmtDay(date)}, ${fmtRange(hour, duration)}.`);
+    }
+    S.selected = date;
+    if (date < S.weekStart || date > addDays(S.weekStart, 6)) S.weekStart = mondayOf(date);
+    closeForm();
+    let openAfter = null;
+    if (job && status !== prevStatus) {
+      if (status === "Client signed off" && job.status !== "Completed") {
+        saveJob({ ...job, status: "Completed", completedDate: date });
+        toast(`${job.id} is Completed. Issue the balance invoice today.`);
+        openAfter = job.id;
+      } else if (status === "Delayed") {
+        const line = `${fmtDay(today)}: Delayed (${title}${base.notes ? ": " + base.notes : ""}).`;
+        saveJob({ ...job, notes: job.notes ? job.notes + "\n" + line : line });
+        toast(`Delay noted on ${job.id}. Let the client know.`);
+      }
+    }
+    render();
+    if (openAfter) openJob(openAfter);
+  });
+
+  /* appointment ↔ job (the Daily Tracker, linked to the log by Job ID) */
+  function fillJobSelect(clientId, selected) {
+    const list = Object.values(S.jobs)
+      .filter((j) => j.id === selected || (clientId && j.clientId === clientId && !isClosed(j)))
+      .sort((x, y) => y.id.localeCompare(x.id));
+    $("#f-job").innerHTML = `<option value="">No job</option>` +
+      list.map((j) => `<option value="${esc(j.id)}">${esc(j.id)} · ${esc(j.title || "Untitled")}</option>`).join("");
+    $("#f-job").value = list.some((j) => j.id === selected) ? selected : "";
+  }
+  function apptJobError(job, status, prevStatus, date, newlyLinked) {
+    if (!job) return null;
+    const c = S.jobcfg;
+    if (newlyLinked && job.quoteStatus === "Declined") return `${job.id} was declined. Pick another job or none.`;
+    if (newlyLinked && job.quoteStatus === "Accepted" && job.deposit > 0 && !job.depositPaid && job.status !== "Cancelled")
+      return `Rule: nobody gets booked until the ${c.depositPct}% deposit on ${job.id} is paid. Record the deposit first, or book this as a quote visit with no job.`;
+    if (status !== prevStatus && status === "Client signed off") {
+      if (job.quoteStatus !== "Accepted") return `${job.id}'s quote isn't Accepted yet, so it can't be signed off.`;
+      if (date > today) return "Record the sign-off on or after the appointment day.";
+    }
+    return null;
+  }
+  function overdueFor(clientId) {
+    const out = [];
+    for (const j of Object.values(S.jobs)) {
+      if (j.clientId !== clientId) continue;
+      for (const i of invoices(j)) if (!i.paid && daysBetween(i.due, today) > 0) out.push({ j, i, over: daysBetween(i.due, today) });
+    }
+    return out;
+  }
+  function updateApptJob() {
+    const job = S.jobs[$("#f-job").value];
+    $("#f-status").disabled = !job;
+    if (!job) $("#f-status").value = "Scheduled";
+    const warns = overdueFor($("#f-clientid").value).map((o) => `Unpaid: ${o.i.no}, ${money(o.i.amount)}, ${o.over} day${o.over === 1 ? "" : "s"} overdue. Consider pausing future work until it's paid.`);
+    if (job && job.quoteStatus === "Accepted" && job.deposit > 0 && !job.depositPaid) warns.unshift(`Deposit on ${job.id} isn't paid yet, so work can't be booked against it.`);
+    $("#f-jobwarn").hidden = !warns.length;
+    $("#f-jobwarn").innerHTML = warns.map((w) => `<span class="warnline">${esc(w)}</span>`).join("<br>");
+  }
+  $("#f-clientid").addEventListener("change", () => { fillJobSelect($("#f-clientid").value, $("#f-job").value); updateApptJob(); });
+  $("#f-job").addEventListener("change", updateApptJob);
+
+  function fillClientSelect(selected) {
+    $("#f-clientid").innerHTML = `<option value="">No client</option>` +
+      sortedClients().map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
+    $("#f-clientid").value = S.clients[selected] ? selected : "";
+  }
+  $("#f-newclient").onclick = () => { cardReturn = (id) => { fillClientSelect(id); fillJobSelect(id, ""); updateApptJob(); }; editClient(null); };
+
+  /* ---------- client card ---------- */
+  let cardId = null, cardReturn = null, cDeleteArmed = null;
+  const newClientId = () => "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  function openClient(id) { if (!S.clients[id]) return; cardId = id; showClient(); $("#coverlay").hidden = false; $("#cv-close").focus(); }
+  function showClient() {
+    const c = S.clients[cardId];
+    if (!c) { closeClient(); return; }
+    $("#cview").hidden = false; $("#cform").hidden = true;
+    $("#cv-name").textContent = c.name;
+    for (const k of ["address", "phone", "email"]) {
+      const el = $("#cv-" + k);
+      el.textContent = c[k] || "Not added";
+      el.classList.toggle("none", !c[k]);
+    }
+    for (const b of document.querySelectorAll("[data-copy]")) b.hidden = !c[b.dataset.copy];
+    $("#cv-notes").hidden = !c.notes; $("#cv-notes").textContent = c.notes;
+    const appts = Object.values(S.appts).filter((a) => a.clientId === c.id)
+      .sort((x, y) => (x.date + pad(x.hour)).localeCompare(y.date + pad(y.hour)));
+    const up = appts.filter((a) => a.date >= today);
+    const past = appts.length - up.length;
+    $("#cv-appts").innerHTML = (up.length
+      ? up.map((a) => `<li><span>${esc(a.title)}<br><span class="t">${fmtDay(a.date)} · ${fmtRange(a.hour, a.duration)}</span>${smsStatus(a)}</span>${isUpcoming(a) ? `<button class="btn" type="button" data-sms="${a.id}">SMS</button>` : ""}</li>`).join("")
+      : `<li class="empty">No upcoming appointments.</li>`) +
+      (past ? `<li class="empty">${past} past appointment${past > 1 ? "s" : ""}</li>` : "");
+    const jobs = Object.values(S.jobs).filter((j) => j.clientId === c.id).sort((x, y) => y.id.localeCompare(x.id));
+    const owing = overdueFor(c.id);
+    $("#cv-jobs").innerHTML = (owing.length ? `<li><span class="warnline">${owing.map((o) => `${esc(o.i.no)} unpaid, ${o.over} day${o.over === 1 ? "" : "s"} overdue`).join(" · ")}. Check before booking more work.</span></li>` : "") +
+      (jobs.length ? jobs.map((j) => { const [label, cls] = stage(j); return `<li><span><button type="button" class="linkbtn" data-job="${esc(j.id)}">${esc(j.id)}</button> ${esc(j.title)}<br><span class="t">${money(sums(j).total)} · paid: ${esc(paidState(j))}</span></span><span class="chip ${cls}">${esc(label)}</span></li>`; }).join("")
+        : `<li class="empty">No jobs yet.</li>`);
+    resetCDelete();
+  }
+  function editClient(id) {
+    cardId = id;
+    const c = id ? S.clients[id] : null;
+    $("#cview").hidden = true; $("#cform").hidden = false;
+    $("#c-head").textContent = c ? "Edit client" : "New client";
+    for (const k of ["name", "address", "phone", "email", "notes"]) $("#c-" + k).value = c ? c[k] : "";
+    $("#c-err").textContent = "";
+    $("#coverlay").hidden = false;
+    $("#c-name").focus();
+  }
+  function closeClient() { $("#coverlay").hidden = true; cardId = null; cardReturn = null; resetCDelete(); }
+  function resetCDelete() { clearTimeout(cDeleteArmed); cDeleteArmed = null; const b = $("#cv-delete"); b.classList.remove("armed"); b.textContent = "Delete client"; }
+  $("#addclient").onclick = () => { cardReturn = null; editClient(null); };
+  $("#csearch").addEventListener("input", renderClients);
+  $("#clientlist").addEventListener("click", (e) => { const b = e.target.closest("[data-client]"); if (b) openClient(b.dataset.client); });
+  $("#coverlay").addEventListener("click", (e) => { if (e.target.id === "coverlay") closeClient(); });
+  $("#cv-close").onclick = closeClient;
+  $("#cv-edit").onclick = () => editClient(cardId);
+  $("#c-cancel").onclick = () => { if (cardId && S.clients[cardId]) showClient(); else closeClient(); };
+  $("#cv-appts").addEventListener("click", (e) => { const b = e.target.closest("[data-sms]"); if (b) openSms(b.dataset.sms); });
+  $("#cv-book").onclick = () => {
+    const id = cardId;
+    closeClient();
+    const date = S.selected >= today ? S.selected : today;
+    const occ = occupancy();
+    const free = range(0, 24).find((h) => isOpen(date, h) && !isPast(date, h) && !occ.has(date + "|" + h));
+    openForm(null, date, free ?? 10);
+    fillClientSelect(id); fillJobSelect(id, ""); updateApptJob();
+  };
+  $("#cv-quote").onclick = () => { const id = cardId; closeClient(); openJob(null, { clientId: id }); };
+  $("#cv-jobs").addEventListener("click", (e) => { const b = e.target.closest("[data-job]"); if (b) { closeClient(); openJob(b.dataset.job); } });
+  $("#cv-delete").onclick = () => {
+    const b = $("#cv-delete");
+    if (!cDeleteArmed) { b.classList.add("armed"); b.textContent = "Confirm delete"; cDeleteArmed = setTimeout(resetCDelete, 4000); return; }
+    const c = S.clients[cardId];
+    removeClient(cardId); closeClient(); render();
+    if (c) toast(`Deleted ${c.name}. Their appointments keep the name.`);
+  };
+  for (const b of document.querySelectorAll("[data-copy]")) {
+    b.addEventListener("click", () => {
+      const el = $("#cv-" + b.dataset.copy);
+      const selectIt = () => { const r = document.createRange(); r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); toast("Selected. Press copy on your device to copy it."); };
+      try { navigator.clipboard.writeText(el.textContent).then(() => toast("Copied."), selectIt); } catch { selectIt(); }
+    });
+  }
+  $("#cform").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = (k) => $("#c-" + k).value.trim();
+    const name = v("name"), email = v("email");
+    if (!name) { $("#c-err").textContent = "Enter the client's name."; $("#c-name").focus(); return; }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { $("#c-err").textContent = "That email address doesn't look right. Check it and try again."; $("#c-email").focus(); return; }
+    const isNew = !(cardId && S.clients[cardId]);
+    const id = isNew ? newClientId() : cardId;
+    saveClient({ id, name, address: v("address"), phone: v("phone"), email, notes: v("notes") });
+    toast(isNew ? `Added ${name}.` : `Saved ${name}.`);
+    if (cardReturn) { const cb = cardReturn; closeClient(); cb(id); }
+    else { cardId = id; showClient(); }
+    render();
+  });
+
+  /* ---------- SMS ---------- */
+  const isUpcoming = (a) => a.date > today || (a.date === today && a.hour >= nowHour);
+  const fmtSent = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : `${d.toLocaleDateString("en-AU", { day: "numeric", month: "short" })}, ${d.toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" })}`; };
+  function smsStatus(a) {
+    const m = S.sms.find((x) => x.apptId === a.id);
+    if (!m) return "";
+    const changed = m.apptDate !== a.date || m.apptHour !== a.hour;
+    return `<br><span class="sub smsok">✓ SMS sent ${esc(fmtSent(m.sentAt))}</span>${changed ? `<span class="warn"> · time changed since, send an update</span>` : ""}`;
+  }
+  function fillTemplate(a) {
+    const name = clientName(a);
+    const vals = {
+      name, first: name.replace(/\s*\(example\)$/, "").split(/\s+/)[0] || "there", title: a.title,
+      date: parse(a.date).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" }),
+      time: fmtRange(a.hour, a.duration),
+    };
+    return S.settings.smsTemplate.replace(/\{(first|name|title|date|time)\}/g, (_, k) => vals[k]);
+  }
+  let smsAppt = null;
+  function openSms(id) {
+    const a = S.appts[id];
+    if (!a) return;
+    smsAppt = id;
+    const c = a.clientId && S.clients[a.clientId];
+    $("#m-about").textContent = `${a.title} · ${fmtDay(a.date)}, ${fmtRange(a.hour, a.duration)}`;
+    $("#m-name").textContent = clientName(a) ? `(${clientName(a)})` : "";
+    $("#m-phone").value = c ? c.phone : "";
+    $("#m-body").value = fillTemplate(a);
+    $("#m-err").textContent = c ? (c.phone ? "" : "This client has no phone number saved. Enter one to send.") : "This appointment has no client card. Enter a phone number to send.";
+    updateSmsLink();
+    $("#moverlay").hidden = false;
+    $("#m-body").focus();
+  }
+  function closeSms() { $("#moverlay").hidden = true; smsAppt = null; }
+  function updateSmsLink() {
+    const phone = $("#m-phone").value.replace(/[^\d+]/g, "");
+    const body = $("#m-body").value;
+    $("#m-open").href = `sms:${phone}?&body=${encodeURIComponent(body)}`;
+    const n = body.length;
+    $("#m-count").textContent = `${n} characters · ${Math.max(1, Math.ceil(n / 160))} SMS`;
+  }
+  $("#m-phone").addEventListener("input", updateSmsLink);
+  $("#m-body").addEventListener("input", updateSmsLink);
+  $("#m-open").addEventListener("click", (e) => { if (!$("#m-phone").value.trim()) { e.preventDefault(); $("#m-err").textContent = "Enter a phone number first."; $("#m-phone").focus(); } });
+  $("#m-cancel").onclick = closeSms;
+  $("#moverlay").addEventListener("click", (e) => { if (e.target.id === "moverlay") closeSms(); });
+  $("#m-copy").onclick = () => {
+    const ta = $("#m-body");
+    const selectIt = () => { ta.focus(); ta.select(); toast("Selected. Press copy on your device to copy it."); };
+    try { navigator.clipboard.writeText(ta.value).then(() => toast("Message copied."), selectIt); } catch { selectIt(); }
+  };
+  $("#mform").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const a = S.appts[smsAppt];
+    if (!a) { closeSms(); return; }
+    const phone = $("#m-phone").value.trim(), body = $("#m-body").value.trim();
+    if (!phone) { $("#m-err").textContent = "Enter the phone number you sent it to."; $("#m-phone").focus(); return; }
+    if (!body) { $("#m-err").textContent = "The message is empty."; $("#m-body").focus(); return; }
+    const rec = { id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), apptId: a.id, clientId: a.clientId || "",
+      clientName: clientName(a), phone, body, sentAt: new Date().toISOString(), apptTitle: a.title, apptDate: a.date, apptHour: a.hour, apptDuration: a.duration };
+    S.sms = [rec, ...S.sms];
+    if (db) { const { id, ...doc } = rec; queueWrite("sms/" + id, () => db.doc("sms/" + id).set(doc)); }
+    const c = a.clientId && S.clients[a.clientId];
+    if (c && !c.phone) saveClient({ ...c, phone });
+    closeSms(); render();
+    if (!$("#coverlay").hidden && !$("#cview").hidden) showClient();
+    toast(`Logged SMS to ${rec.clientName || phone}.`);
+  });
+  $("#f-sms").onclick = () => openSms(S.editing);
+  let smsShowAll = false;
+  function renderSms() {
+    const list = smsShowAll ? S.sms : S.sms.slice(0, 20);
+    $("#smscount").textContent = S.sms.length ? `${S.sms.length} sent` : "";
+    $("#smslist").innerHTML = list.length ? list.map((m) => `<li>
+        <div class="sh"><strong>${esc(m.clientName || m.phone)}</strong><span class="t">${esc(fmtSent(m.sentAt))}</span></div>
+        <span class="sub">${esc(m.apptTitle)} · ${fmtDay(m.apptDate)}, ${fmtRange(m.apptHour, m.apptDuration || 1)} · ${esc(m.phone)}</span>
+        <details><summary>Message</summary><p>${esc(m.body)}</p></details>
+      </li>`).join("")
+      : `<li class="empty" style="border:0;background:none;padding:0">No messages sent yet. Tap SMS on an upcoming appointment to text the client their time.</li>`;
+    $("#smsmore").hidden = smsShowAll || S.sms.length <= 20;
+  }
+  $("#smsmore").onclick = () => { smsShowAll = true; renderSms(); };
+
+  /* ---------- jobs: one Job ID from quote to payment ---------- */
+  const { normJob, num, money, daysBetween, fmtDate, plural, invNo } = JobRules;
+  const { gstOf, incGst, sums, invoices, paidState, REMINDERS, ladder, nextAction, isClosed, stage, issues } =
+    JobRules.create({ cfg: () => S.jobcfg, today: () => today });
+  function nextJobId() {
+    const y = today.slice(0, 4);
+    const n = Object.keys(S.jobs).reduce((m, id) => { const r = id.match(/^MND-(\d{4})-(\d+)$/); return r && r[1] === y ? Math.max(m, +r[2]) : m; }, 0);
+    return `MND-${y}-${String(n + 1).padStart(3, "0")}`;
+  }
+  const jobClient = (j) => (j.clientId && S.clients[j.clientId] ? S.clients[j.clientId].name : j.client) || "No client";
+  function saveJob(j) {
+    S.jobs[j.id] = j;
+    if (db) { const { id, ...doc } = j; queueWrite("jobs/" + id, () => db.doc("jobs/" + id).set(doc)); }
+  }
+  function removeJob(id) {
+    delete S.jobs[id];
+    if (db) queueWrite("jobs/" + id, () => db.doc("jobs/" + id).delete());
+  }
+
+  function jobFormError(j) {
+    const c = S.jobcfg;
+    if (!j.clientId) return "Choose the client for this job.";
+    if (!j.title.trim()) return "Say what the job is.";
+    if (j.quoteStatus === "Declined" && !j.notes.trim()) return "Note why the quote was declined (price, timing) in Notes so you can quote better next time.";
+    if (j.status === "Cancelled" && !j.notes.trim()) return "Note what happens to the deposit, and any work done, in Notes before cancelling.";
+    if ((j.status === "In progress" || j.status === "Completed") && j.quoteStatus === "Accepted" && j.deposit > 0 && !j.depositPaid)
+      return `Rule: work starts only once the ${c.depositPct}% deposit is paid. Record the deposit payment first.`;
+    const bad = j.variations.findIndex((v) => !v.desc.trim());
+    if (bad >= 0) return `Describe variation ${bad + 1}, or remove it.`;
+    const iss = issues(j);
+    return iss.length ? iss[0] : null;
+  }
+
+  /* jobs view */
+  function renderJobs() {
+    const c = S.jobcfg;
+    const all = Object.values(S.jobs).sort((x, y) => y.id.localeCompare(x.id));
+    let quotes = 0, quoteVal = 0, expired = 0, owed = 0, owedN = 0, over = 0, overN = 0, remN = 0;
+    const acts = [];
+    for (const j of all) {
+      if (j.quoteStatus === "Sent" || j.quoteStatus === "Pending") {
+        quotes++; quoteVal += j.quoted;
+        if (j.quoteDate && daysBetween(addDays(j.quoteDate, c.validDays), today) > 0) expired++;
+      }
+      for (const i of invoices(j)) if (!i.paid) { owed += i.amount; owedN++; if (daysBetween(i.due, today) > 0) { over += i.amount; overN++; } }
+      const a = nextAction(j), iss = issues(j);
+      if (a.reminder) remN++;
+      if (a.urgent || iss.length) acts.push({ j, a, iss });
+    }
+    $("#j-quotes").textContent = quotes;
+    $("#j-quotes-sub").textContent = quotes ? `${money(quoteVal)}${expired ? ` · ${expired} expired` : ""}` : "None open";
+    $("#j-owed").textContent = money(owed);
+    $("#j-owed-sub").textContent = owedN ? plural(owedN, "unpaid invoice") : "Nothing outstanding";
+    $("#j-over").textContent = money(over);
+    $("#j-over-sub").textContent = overN ? plural(overN, "invoice") + " past due" : "Nothing overdue";
+    $("#j-rem").textContent = remN;
+
+    acts.sort((x, y) => (!!y.a.reminder - !!x.a.reminder) || x.j.id.localeCompare(y.j.id));
+    $("#actionlist").innerHTML = acts.length ? acts.map(({ j, a, iss }) => `<li class="urgent">
+        <span class="jid">${esc(j.id)}</span>
+        <span><strong>${esc(jobClient(j))}</strong> · ${esc(j.title)}<br><span class="sub">${esc(a.text)}${iss.map((x) => `<br><span class="warnline">Check: ${esc(x)}</span>`).join("")}</span></span>
+        <span class="rbtns">${a.reminder ? `<button class="btn primary" type="button" data-remind="${esc(j.id)}|${a.reminder.inv}|${a.reminder.level}">Send V${a.reminder.level}</button>` : ""}<button class="btn" type="button" data-job="${esc(j.id)}">Open</button></span>
+      </li>`).join("")
+      : `<li class="empty" style="display:block;border:0;background:none;padding:0">${all.length ? "Nothing needs action right now." : "No jobs yet. Start one with New quote."}</li>`;
+
+    for (const b of document.querySelectorAll("#jfilter button")) b.setAttribute("aria-pressed", b.dataset.f === S.jfilter);
+    const q = $("#jsearch").value.trim().toLowerCase();
+    const show = all.filter((j) => {
+      const f = S.jfilter;
+      if (f === "active" && isClosed(j)) return false;
+      if (f === "quotes" && !(j.quoteStatus === "Sent" || j.quoteStatus === "Pending")) return false;
+      if (f === "unpaid" && !invoices(j).some((i) => !i.paid)) return false;
+      if (f === "closed" && !isClosed(j)) return false;
+      return !q || [j.id, j.title, jobClient(j)].some((v) => v.toLowerCase().includes(q));
+    });
+    const chipFor = (p, j) => {
+      const late = invoices(j).some((i) => !i.paid && daysBetween(i.due, today) > 0);
+      return `<span class="chip ${p === "Yes" ? "ok" : late ? "hot" : p === "n/a" || p === "Not invoiced" ? "dim" : ""}">${esc(p)}${late ? " · overdue" : ""}</span>`;
+    };
+    $("#jobtable").innerHTML = `<thead><tr><th scope="col">Job ID</th><th scope="col">Client · job</th><th scope="col">Stage</th><th scope="col">Quote</th><th scope="col">Job status</th><th scope="col" class="num">Total${incGst()}</th><th scope="col">Paid</th><th scope="col">Next action</th></tr></thead><tbody>` +
+      (show.length ? show.map((j) => {
+        const [label, cls] = stage(j), s = sums(j), a = nextAction(j);
+        return `<tr>
+          <td><button type="button" class="linkbtn jid" data-job="${esc(j.id)}">${esc(j.id)}</button></td>
+          <td><strong>${esc(jobClient(j))}</strong><br><span class="sub">${esc(j.title)}</span></td>
+          <td><span class="chip ${cls}">${esc(label)}</span>${issues(j).length ? ` <span class="chip hot">Check</span>` : ""}</td>
+          <td>${esc(j.quoteStatus)}<br><span class="sub">${j.quoteDate ? fmtDay(j.quoteDate) : ""}</span></td>
+          <td>${esc(j.status)}<br><span class="sub">${j.startDate ? "Start " + fmtDay(j.startDate) : ""}</span></td>
+          <td class="num">${money(s.total)}${s.vars ? `<br><span class="sub">incl. ${money(s.vars)} variations</span>` : ""}</td>
+          <td>${chipFor(paidState(j), j)}</td>
+          <td><span class="sub">${esc(a.text)}</span></td>
+        </tr>`;
+      }).join("") : `<tr><td colspan="8" class="empty">No jobs in this list.</td></tr>`) + "</tbody>";
+
+    $("#jrules").innerHTML = [
+      `<strong>One Job ID</strong> (MND-YYYY-NNN) on the quote, the schedule, both invoices (…-D deposit, …-B balance) and every reminder.`,
+      `<strong>Quotes are valid for ${plural(c.validDays, "day")}.</strong> Sent or Pending quotes past that are flagged: follow up or re-quote.`,
+      `<strong>${c.depositPct}% deposit before start.</strong> Work can't be booked against an accepted job until the deposit is paid.`,
+      `<strong>Balance on completion.</strong> When the client signs off, the job is Completed and the balance invoice goes out that day.`,
+      `<strong>Variations count once approved in writing</strong>, and they change the job total, so the invoice reconciles with the quote.`,
+      c.gst ? `<strong>All amounts include GST</strong>; GST (1/11) is shown separately on quotes and invoices.`
+        : `<strong>No GST is charged.</strong> Quotes and invoices show plain totals. Turn GST on in Settings once you're registered.`,
+      `<strong>Invoices are due ${plural(c.terms, "day")} after the invoice date.</strong> Reminders go in order: V1 ${plural(c.v1Days, "day")} after invoicing, V2 once overdue, V3 at ${plural(c.v3Days, "day")} overdue.`,
+      `<strong>Unpaid invoices are flagged</strong> when you book that client again, so you can pause future work.`,
+    ].map((x) => `<li>${x}</li>`).join("");
+  }
+  function setView(v) { S.view = v; S.moving = null; render(); }
+  $("#v-plan").onclick = () => setView("plan");
+  $("#v-jobs").onclick = () => setView("jobs");
+  $("#jfilter").addEventListener("click", (e) => { const b = e.target.closest("[data-f]"); if (b) { S.jfilter = b.dataset.f; renderJobs(); } });
+  $("#jsearch").addEventListener("input", renderJobs);
+  $("#newjob").onclick = () => openJob(null);
+  $("#jobsview").addEventListener("click", (e) => {
+    const r = e.target.closest("[data-remind]");
+    if (r) { const [id, inv, lvl] = r.dataset.remind.split("|"); openMail("remind", id, { inv, level: +lvl }); return; }
+    const b = e.target.closest("[data-job]");
+    if (b) openJob(b.dataset.job);
+  });
+
+  /* job sheet */
+  let jBase = null, jVars = [], depTouched = false, jDeleteArmed = null;
+  const F = (id) => $("#j-" + id);
+  function fillJobClients(selected) {
+    F("client").innerHTML = `<option value="">Choose a client</option>` + sortedClients().map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
+    F("client").value = S.clients[selected] ? selected : "";
+  }
+  function openJob(id, preset) {
+    const existing = id && S.jobs[id];
+    const j = existing ? S.jobs[id] : normJob(nextJobId(), { quoteDate: today, quoteStatus: "Sent", createdAt: new Date().toISOString(), ...(preset || {}) });
+    jBase = { ...j, isNew: !existing };
+    F("head").textContent = existing ? j.id : `New quote · ${j.id}`;
+    fillJobClients(j.clientId);
+    F("title").value = j.title;
+    F("qdate").value = j.quoteDate; F("qamt").value = j.quoted || ""; F("qstatus").value = j.quoteStatus;
+    F("damt").value = j.deposit || ""; F("ddate").value = j.depositDate; F("dpaid").value = j.depositPaid;
+    F("start").value = j.startDate; F("status").value = j.status; F("done").value = j.completedDate;
+    F("canc").value = j.cancelAmount || "";
+    F("idate").value = j.invoiceDate; F("due").value = j.dueDate; F("ipaid").value = j.balancePaid;
+    F("notes").value = j.notes;
+    jVars = j.variations.map((v) => ({ ...v }));
+    depTouched = !!j.deposit;
+    F("err").textContent = "";
+    F("delete").hidden = !existing;
+    resetJDelete();
+    renderVars(); paintJob();
+    $("#joverlay").hidden = false;
+    (existing ? F("close") : F("client")).focus();
+  }
+  function closeJob() { $("#joverlay").hidden = true; jBase = null; resetJDelete(); }
+  function resetJDelete() { clearTimeout(jDeleteArmed); jDeleteArmed = null; const b = F("delete"); b.classList.remove("armed"); b.textContent = "Delete job"; }
+  function readJobForm() {
+    const clientId = F("client").value;
+    return normJob(jBase.id, {
+      ...jBase, clientId, client: S.clients[clientId] ? S.clients[clientId].name : jBase.client,
+      title: F("title").value.trim(), quoteDate: F("qdate").value, quoted: F("qamt").value, quoteStatus: F("qstatus").value,
+      deposit: F("damt").value, depositDate: F("ddate").value, depositPaid: F("dpaid").value,
+      startDate: F("start").value, status: F("status").value, completedDate: F("done").value, cancelAmount: F("canc").value,
+      invoiceDate: F("idate").value, dueDate: F("due").value, balancePaid: F("ipaid").value,
+      notes: F("notes").value.trim(), variations: jVars,
+    });
+  }
+  function renderVars() {
+    F("vars").innerHTML = jVars.length ? jVars.map((v, i) => `<li>
+        <input aria-label="Variation ${i + 1}: what changed" data-vi="${i}" data-vk="desc" maxlength="120" value="${esc(v.desc)}" placeholder="What changed">
+        <input aria-label="Variation ${i + 1}: amount${incGst()}" data-vi="${i}" data-vk="amount" inputmode="decimal" value="${v.amount || ""}" placeholder="$${incGst()}">
+        <label class="check"><input type="checkbox" data-vi="${i}" data-vk="approved"${v.approved ? " checked" : ""}>Approved in writing</label>
+        <button class="btn" type="button" data-vdel="${i}">Remove</button>
+      </li>`).join("") : `<li class="empty" style="display:block">No variations.</li>`;
+  }
+  function ladderHtml(j) {
+    const inv = invoices(j);
+    if (!inv.length) return `<p class="calc" style="margin:0">Reminders start once an invoice is sent and still unpaid.</p>`;
+    return inv.map((i) => {
+      const l = ladder(j, i);
+      const state = i.paid ? `paid ${fmtDate(i.paid)}` : l.over > 0 ? `<span class="warnline">${plural(l.over, "day")} overdue</span>` : `due ${fmtDay(i.due)}`;
+      const rungs = REMINDERS.map((r, k) => {
+        const lvl = k + 1, sent = l.sent.find((x) => x.level === lvl), isNext = l.next === lvl, early = l.early === lvl;
+        return `<div class="rung${sent ? " done" : ""}${isNext ? " next" : ""}"><span class="t">V${lvl} · ${esc(r.when(S.jobcfg))}</span><span>${r.name}</span>
+          ${sent ? `<span class="t">Sent ${esc(fmtSent(sent.sentAt))}</span>` : ""}
+          ${isNext || early ? `<button class="btn${isNext ? " primary" : ""}" type="button" data-remind="${esc(j.id)}|${i.inv}|${lvl}">${isNext ? `Send V${lvl}` : `Send V${lvl} early`}</button>` : ""}</div>`;
+      }).join("");
+      return `<div class="calc" style="margin-bottom:6px"><strong>${esc(i.no)}</strong> · ${money(i.amount)} · ${state}</div>${i.paid ? "" : `<div class="ladder">${rungs}</div>`}`;
+    }).join(`<div style="height:10px"></div>`);
+  }
+  function paintJob() {
+    if (!jBase) return;
+    const j = readJobForm(), s = sums(j), c = S.jobcfg;
+    F("expiry").textContent = j.quoteDate ? `Valid until ${fmtDay(addDays(j.quoteDate, c.validDays))}` : "";
+    for (const el of document.querySelectorAll(".gstlbl")) el.hidden = !c.gst;
+    F("gst").innerHTML = !c.gst
+      ? (j.quoted ? `Total <strong>${money(j.quoted)}</strong>, no GST charged (GST is off in Settings).` : "Enter the quoted amount. GST is off in Settings, so no GST is added or shown.")
+      : j.quoted
+      ? `Subtotal <strong>${money(j.quoted - gstOf(j.quoted))}</strong> + GST <strong>${money(gstOf(j.quoted))}</strong> = <strong>${money(j.quoted)}</strong> inc. GST`
+      : "Enter the quoted amount including GST. The quote email shows the GST separately.";
+    F("deppct").textContent = `${c.depositPct}% before work starts · invoice ${invNo(j, "D")}`;
+    F("dinfo").textContent = j.depositDate
+      ? (j.depositPaid ? `Paid ${fmtDate(j.depositPaid)}.` : `Due ${fmtDate(j.depositDue || addDays(j.depositDate, c.terms))}. Not paid yet.`)
+      : j.quoteStatus === "Accepted" ? "Accepted: send the deposit invoice before booking any work." : "Invoiced once the quote is Accepted.";
+    F("total").innerHTML = j.status === "Cancelled"
+      ? `Cancelled: the total is the work done and materials entered under Balance invoice.`
+      : `Quoted <strong>${money(j.quoted)}</strong> + approved variations <strong>${money(s.vars)}</strong> = job total <strong>${money(s.total)}</strong>${s.pendingVars ? ` · <span class="warnline">${plural(s.pendingVars, "variation")} not approved in writing yet, so not counted</span>` : ""}`;
+    F("cancrow").hidden = j.status !== "Cancelled";
+    F("binv").textContent = `invoice ${invNo(j, "F")} · due on completion`;
+    F("binfo").innerHTML = s.balance >= 0
+      ? `Job total <strong>${money(s.total)}</strong> − deposit <strong>${money(s.deposit)}</strong> = balance <strong>${money(s.balance)}</strong>${c.gst ? ` (includes GST of ${money(gstOf(s.balance))})` : ""}`
+      : `<span class="warnline">The deposit is ${money(-s.balance)} more than the work done.</span> Refund it or agree to keep it, and note which.`;
+    F("paid").textContent = `Paid: ${paidState(j)}`;
+    F("ladder").innerHTML = ladderHtml(j);
+    const a = nextAction(j), iss = issues(j);
+    F("next").className = "nextact" + (a.urgent || iss.length ? "" : " calm");
+    F("next").innerHTML = esc(a.text || "Fill in the client, the job and the quote to get started.") + iss.map((x) => `<br><span class="warnline">Check: ${esc(x)}</span>`).join("");
+    const [label, cls] = stage(j);
+    F("stage").innerHTML = `<span class="chip ${cls}">${esc(label)}</span>`;
+    const appts = Object.values(S.appts).filter((x) => x.jobId === j.id).sort((x, y) => (x.date + pad(x.hour)).localeCompare(y.date + pad(y.hour)));
+    F("appts").innerHTML = appts.length
+      ? appts.map((x) => `<li><span>${esc(x.title)}<br><span class="t">${fmtDay(x.date)} · ${fmtRange(x.hour, x.duration)}</span></span><span class="chip${x.status === "Delayed" ? " hot" : x.status === "Client signed off" ? " ok" : ""}">${esc(x.status || "Scheduled")}</span></li>`).join("")
+      : `<li class="empty">None booked.</li>`;
+  }
+  $("#jform").addEventListener("input", (e) => {
+    const t = e.target;
+    if (t.dataset.vi !== undefined) {
+      const v = jVars[+t.dataset.vi];
+      if (v) v[t.dataset.vk] = t.dataset.vk === "approved" ? t.checked : t.dataset.vk === "amount" ? num(t.value) : t.value;
+    }
+    if (t.id === "j-damt") depTouched = !!t.value.trim();
+    if (t.id === "j-qamt" && !depTouched) F("damt").value = num(t.value) ? (Math.round(num(t.value) * S.jobcfg.depositPct) / 100).toFixed(2) : "";
+    paintJob();
+  });
+  $("#jform").addEventListener("change", (e) => {
+    const t = e.target;
+    if (t.id === "j-status" && t.value === "Completed" && !F("done").value) F("done").value = today;
+    if (t.id === "j-status" && t.value === "In progress" && !F("start").value) F("start").value = today;
+    if (t.id === "j-idate" && t.value && !F("due").value) F("due").value = addDays(t.value, S.jobcfg.terms);
+    paintJob();
+  });
+  F("vars").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-vdel]");
+    if (b) { jVars.splice(+b.dataset.vdel, 1); renderVars(); paintJob(); }
+  });
+  F("addvar").onclick = () => { jVars.push({ desc: "", amount: 0, approved: false }); renderVars(); paintJob(); F("vars").querySelector("li:last-child input").focus(); };
+  F("newclient").onclick = () => { cardReturn = (id) => { fillJobClients(id); paintJob(); }; editClient(null); };
+  F("close").onclick = closeJob;
+  $("#joverlay").addEventListener("click", (e) => { if (e.target.id === "joverlay") closeJob(); });
+  F("delete").onclick = () => {
+    const b = F("delete");
+    if (!jDeleteArmed) { b.classList.add("armed"); b.textContent = "Confirm delete"; jDeleteArmed = setTimeout(resetJDelete, 4000); return; }
+    const id = jBase.id;
+    removeJob(id); closeJob(); render();
+    toast(`Deleted ${id}. Its appointments keep the Job ID.`);
+  };
+  // Save the sheet; returns the saved job or null (and shows why).
+  function commitJob() {
+    const j = readJobForm();
+    const err = jobFormError(j);
+    if (err) { F("err").textContent = err; return null; }
+    F("err").textContent = "";
+    const { isNew, ...rest } = j;
+    saveJob(rest);
+    jBase = { ...rest, isNew: false };
+    F("head").textContent = rest.id; F("delete").hidden = false;
+    return rest;
+  }
+  $("#jform").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const j = commitJob();
+    if (!j) return;
+    closeJob(); render();
+    toast(`Saved ${j.id}.`);
+  });
+  $("#jform").addEventListener("click", (e) => {
+    const m = e.target.closest("[data-mail]");
+    const r = e.target.closest("[data-remind]");
+    if (!m && !r) return;
+    const j = commitJob();
+    if (!j) return;
+    render(); paintJob();
+    if (m) openMail(m.dataset.mail, j.id);
+    else { const [, inv, lvl] = r.dataset.remind.split("|"); openMail("remind", j.id, { inv, level: +lvl }); }
+  });
+  F("book").onclick = () => {
+    const j = commitJob();
+    if (!j) return;
+    const err = apptJobError(j, "Scheduled", "Scheduled", today, true);
+    if (err) { F("err").textContent = err; return; }
+    closeJob();
+    S.view = "plan";
+    const date = j.startDate && j.startDate >= today ? j.startDate : S.selected >= today ? S.selected : today;
+    S.selected = date; S.weekStart = mondayOf(date);
+    render();
+    const occ = occupancy();
+    const free = range(0, 24).find((h) => isOpen(date, h) && !isPast(date, h) && !occ.has(date + "|" + h));
+    openForm(null, date, free ?? 10);
+    $("#f-title").value = j.title;
+    fillClientSelect(j.clientId); fillJobSelect(j.clientId, j.id); updateApptJob();
+  };
+
+  /* emails: quote, invoices and the reminder ladder, all sent from Will's own mail app */
+  let mailCtx = null;
+  function mailFooter(j) {
+    const c = S.jobcfg;
+    return `How to pay: ${c.payHow || "[Add your payment details in Settings]"}\nPlease use ${j.id} as the payment reference.\n\n${c.signoff}`;
+  }
+  function buildMail(kind, j, opt) {
+    const c = S.jobcfg, s = sums(j);
+    const first = jobClient(j).replace(/\s*\(example\)$/, "").split(/\s+/)[0] || "there";
+    const hi = `Hi ${first},\n\n`;
+    if (kind === "quote") {
+      const dep = Math.round(j.quoted * c.depositPct) / 100;
+      return {
+        head: "Email the quote", subject: `Quote ${j.id}: ${j.title}`,
+        body: hi + `Thanks for having me out. Here's my quote for ${j.title}.\n\nJob ID: ${j.id}\n${c.gst ? `Subtotal: ${money(j.quoted - gstOf(j.quoted))}\nGST: ${money(gstOf(j.quoted))}\nTotal (inc. GST): ${money(j.quoted)}` : `Total: ${money(j.quoted)}`}\n\nTerms\n- This quote is valid for ${plural(c.validDays, "day")}, until ${fmtDate(addDays(j.quoteDate || today, c.validDays))}.\n` +
+          (c.depositPct ? `- A ${c.depositPct}% deposit (${money(dep)}) is due before work starts. I'll book your job in once it's paid.\n` : "") +
+          `- The balance is due on completion, payable within ${plural(c.terms, "day")} of the invoice.\n- Any change to the scope (a variation) needs your approval in writing and will be added to the final invoice.\n\nTo accept, just reply to this email and quote your Job ID.\n\n${c.signoff}`,
+      };
+    }
+    if (kind === "deposit") {
+      const date = j.depositDate || today, due = j.depositDue || addDays(date, c.terms);
+      return {
+        head: "Email the deposit invoice", subject: `Invoice #${invNo(j, "D")}: deposit for ${j.title}`,
+        body: hi + `Thanks for accepting my quote. Here's the deposit invoice so I can book your job in.\n\nInvoice #: ${invNo(j, "D")}\nJob ID: ${j.id}\nDeposit (${c.depositPct}% of ${money(j.quoted)}): ${money(j.deposit)}\n${c.gst ? `Includes GST of: ${money(gstOf(j.deposit))}\n` : ""}Invoice date: ${fmtDate(date)}\nDue: ${fmtDate(due)}\n\n` + mailFooter(j),
+      };
+    }
+    if (kind === "final") {
+      const date = j.invoiceDate || today, due = j.dueDate || addDays(date, c.terms);
+      const vars = j.variations.filter((v) => v.approved);
+      const lines = j.status === "Cancelled"
+        ? `Work done and materials: ${money(s.total)}\n`
+        : `Quoted: ${money(j.quoted)}\n` + vars.map((v) => `Variation (approved): ${v.desc}: ${money(v.amount)}\n`).join("") + `Job total: ${money(s.total)}\n`;
+      return {
+        head: "Email the balance invoice", subject: `Invoice #${invNo(j, "F")}: ${j.title}`,
+        body: hi + (j.status === "Cancelled" ? `As discussed, here's the invoice for the work done and materials bought before the job was cancelled.\n\n` : `Thanks for signing off on ${j.title}. Here's the final invoice.\n\n`) +
+          `Invoice #: ${invNo(j, "F")}\nJob ID: ${j.id}\n${lines}${s.deposit ? `Less deposit paid: −${money(s.deposit)}\n` : ""}Balance due: ${money(s.balance)}\n${c.gst ? `Includes GST of: ${money(gstOf(s.balance))}\n` : ""}Invoice date: ${fmtDate(date)}\nDue: ${fmtDate(due)}\n\n` + mailFooter(j),
+      };
+    }
+    const i = invoices(j).find((x) => x.inv === opt.inv);
+    const r = REMINDERS[opt.level - 1];
+    return { head: `Send reminder V${opt.level}: ${r.name}`, subject: r.subject(i), body: hi + r.body(j, i) + "\n\n" + mailFooter(j) };
+  }
+  function openMail(kind, jobId, opt) {
+    const j = S.jobs[jobId];
+    if (!j) return;
+    if (kind === "deposit" && j.quoteStatus !== "Accepted") { toast("Mark the quote Accepted before sending the deposit invoice."); return; }
+    if (kind === "deposit" && !j.deposit) { toast("Enter the deposit amount first."); return; }
+    if (kind === "final" && j.status !== "Completed" && j.status !== "Cancelled") { toast("The balance is invoiced on completion. Set the job to Completed first."); return; }
+    if (kind === "final" && sums(j).balance <= 0) { toast("There's no balance left to invoice."); return; }
+    if (kind === "quote" && !j.quoted) { toast("Enter the quoted amount first."); return; }
+    if (kind === "remind") {
+      const i = invoices(j).find((x) => x.inv === opt.inv);
+      if (!i || i.paid) { toast("That invoice is already paid."); return; }
+      const l = ladder(j, i);
+      if (opt.level !== l.lastLevel + 1) { toast(`Send the reminders in order. V${l.lastLevel + 1} is next.`); return; }
+    }
+    const m = buildMail(kind, j, opt);
+    mailCtx = { kind, jobId, opt };
+    const c = S.clients[j.clientId];
+    $("#e-head").textContent = m.head;
+    $("#e-about").textContent = `${j.id} · ${jobClient(j)} · ${j.title}`;
+    $("#e-to").value = c ? c.email : "";
+    $("#e-subj").value = m.subject;
+    $("#e-body").value = m.body;
+    $("#e-err").textContent = c && c.email ? "" : "This client has no email saved. Enter one to send.";
+    updateMailLink();
+    $("#eoverlay").hidden = false;
+    $("#e-body").focus();
+  }
+  function closeMail() { $("#eoverlay").hidden = true; mailCtx = null; }
+  function updateMailLink() {
+    $("#e-open").href = `mailto:${$("#e-to").value.trim()}?subject=${encodeURIComponent($("#e-subj").value)}&body=${encodeURIComponent($("#e-body").value)}`;
+  }
+  for (const id of ["#e-to", "#e-subj", "#e-body"]) $(id).addEventListener("input", updateMailLink);
+  $("#e-open").addEventListener("click", (e) => { if (!$("#e-to").value.trim()) { e.preventDefault(); $("#e-err").textContent = "Enter the client's email first."; $("#e-to").focus(); } });
+  $("#e-cancel").onclick = closeMail;
+  $("#eoverlay").addEventListener("click", (e) => { if (e.target.id === "eoverlay") closeMail(); });
+  $("#e-copy").onclick = () => {
+    const ta = $("#e-body");
+    const selectIt = () => { ta.focus(); ta.select(); toast("Selected. Press copy on your device to copy it."); };
+    try { navigator.clipboard.writeText(ta.value).then(() => toast("Message copied."), selectIt); } catch { selectIt(); }
+  };
+  $("#eform").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const j = mailCtx && S.jobs[mailCtx.jobId];
+    if (!j) { closeMail(); return; }
+    const to = $("#e-to").value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { $("#e-err").textContent = "Enter the email address you sent it to."; $("#e-to").focus(); return; }
+    const now = new Date().toISOString(), t = S.jobcfg.terms, { kind, opt } = mailCtx;
+    const next = { ...j, sent: { ...j.sent } };
+    if (kind === "quote") { next.sent.quote = now; if (!next.quoteDate) next.quoteDate = today; }
+    if (kind === "deposit") { next.sent.D = now; if (!next.depositDate) next.depositDate = today; if (!next.depositDue) next.depositDue = addDays(next.depositDate, t); }
+    if (kind === "final") { next.sent.F = now; if (!next.invoiceDate) next.invoiceDate = today; if (!next.dueDate) next.dueDate = addDays(next.invoiceDate, t); }
+    if (kind === "remind") next.reminders = [...j.reminders, { inv: opt.inv, level: opt.level, day: today, sentAt: now, to }];
+    saveJob(next);
+    const c = S.clients[j.clientId];
+    if (c && !c.email) saveClient({ ...c, email: to });
+    closeMail();
+    const sheetOpen = !$("#joverlay").hidden && jBase && jBase.id === j.id;
+    render();
+    if (sheetOpen) openJob(j.id);
+    toast(kind === "remind" ? `Logged reminder V${opt.level} for ${j.id}.` : `Logged: ${j.id} ${kind === "quote" ? "quote" : kind === "deposit" ? "deposit invoice" : "balance invoice"} sent.`);
+  });
+
+  /* ---------- clock ---------- */
+  setInterval(() => {
+    const t = ymd(new Date()), h = new Date().getHours();
+    if (t !== today || h !== nowHour) { today = t; nowHour = h; if (!paint && $("#overlay").hidden && $("#coverlay").hidden && $("#soverlay").hidden && $("#moverlay").hidden && $("#joverlay").hidden && $("#eoverlay").hidden) render(); }
+  }, 60000);
+
+  /* ---------- example data when this view can't save ---------- */
+  function loadExamples() {
+    const ws = mondayOf(today);
+    const ex = [
+      [0, 10, 1, "Site visit (example)", "Harris"], [1, 10, 1, "Client call (example)", "Nguyen"],
+      [1, 13, 2, "Quote review (example)", "Patel"], [2, 11, 1, "Measure up (example)", "O'Brien"],
+      [3, 10, 2, "Install (example)", "Kowalski"], [4, 14, 1, "Follow-up (example)", "Harris"],
+    ];
+    const people = { Harris: "Sam Harris", Nguyen: "Linh Nguyen", Patel: "Priya Patel", "O'Brien": "Kate O'Brien", Kowalski: "Tom Kowalski" };
+    Object.entries(people).forEach(([k, n], i) => {
+      const id = "exc" + i;
+      S.clients[id] = { id, name: n + " (example)", address: `${i + 1} Example St, Sampleton`, phone: `0400 000 00${i + 1}`, email: `${n.split(" ")[0].toLowerCase()}@example.com`, notes: "" };
+      people[k] = id;
+    });
+    ex.forEach(([d, h, dur, t, c], i) => { const id = "ex" + i; S.appts[id] = { id, title: t, clientId: people[c], client: c, status: "Scheduled", date: addDays(ws, d), hour: h, duration: dur, notes: "" }; });
+    const y = today.slice(0, 4), jid = (n) => `MND-${y}-00${n}`, ago = (n) => addDays(today, -n);
+    const jobs = [
+      [1, "Harris", { title: "Replace 12 m of boundary fence (example)", quoteDate: ago(40), quoted: 3850, quoteStatus: "Accepted", deposit: 1155, depositDate: ago(35), depositPaid: ago(33),
+        startDate: ago(20), status: "Completed", completedDate: ago(12), variations: [{ desc: "Extra post and footing (example)", amount: 220, approved: true }],
+        invoiceDate: ago(12), dueDate: ago(5), reminders: [{ inv: "F", level: 1, day: ago(8), sentAt: new Date(Date.now() - 8 * 864e5).toISOString() }] }],
+      [2, "Nguyen", { title: "Gate latch and hinge repair (example)", quoteDate: ago(16), quoted: 380, quoteStatus: "Sent" }],
+      [3, "Patel", { title: "Paint back deck (example)", quoteDate: ago(6), quoted: 1650, quoteStatus: "Accepted", deposit: 495 }],
+      [4, "O'Brien", { title: "Shed door rebuild (example)", quoteDate: ago(3), quoted: 920, quoteStatus: "Pending" }],
+      [5, "Kowalski", { title: "Install two ceiling fans (example)", quoteDate: ago(14), quoted: 760, quoteStatus: "Accepted", deposit: 228, depositDate: ago(10), depositPaid: ago(9), startDate: today, status: "In progress" }],
+      [6, "Harris", { title: "Gutter clean (example)", quoteDate: ago(60), quoted: 290, quoteStatus: "Accepted", deposit: 0, startDate: ago(50), status: "Completed", completedDate: ago(50), invoiceDate: ago(50), dueDate: ago(43), balancePaid: ago(45) }],
+    ];
+    for (const [n, c, v] of jobs) S.jobs[jid(n)] = normJob(jid(n), { ...v, clientId: people[c], client: S.clients[people[c]].name });
+    S.appts.ex4.jobId = jid(5);
+  }
+
+  /* ---------- boot ---------- */
+  fillHourSelects();
+  render();
+  (async () => {
+    let reason = "";
+    try { const r = await window.PlannerStore.connect(); db = r.db; reason = r.reason || ""; }
+    catch { db = null; reason = "Couldn't reach the planner's storage. Showing example data; changes won't be saved."; }
+    if (!db) { if (reason) $("#offline").textContent = reason; $("#offline").hidden = false; loadExamples(); render(); return; }
+    db.doc("config/settings").onSnapshot((snap) => {
+      if (!snap.exists) return;
+      const s = snap.data();
+      S.settings = {
+        dayStart: Number.isInteger(s.dayStart) ? s.dayStart : 10,
+        dayEnd: Number.isInteger(s.dayEnd) ? s.dayEnd : 20,
+        week: Array.isArray(s.week) && s.week.length === 7 && s.week.every((w) => w && Number.isInteger(w.start) && Number.isInteger(w.end))
+          ? s.week.map((w) => ({ open: !!w.open, start: Math.max(0, Math.min(23, w.start)), end: Math.max(1, Math.min(24, w.end)) }))
+          : defaultWeek(),
+        smsTemplate: typeof s.smsTemplate === "string" && s.smsTemplate.trim() ? s.smsTemplate : DEFAULT_SMS,
+      };
+      buildWeekSets(); if (!paint) render();
+    }, () => {});
+    db.collection("hours").onSnapshot((snap) => {
+      const next = {};
+      for (const d of snap.docs) {
+        const v = d.data();
+        if (Array.isArray(v.slots)) next[d.id] = new Set(v.slots.filter(Number.isInteger));
+      }
+      for (const date of pendingDates) { if (S.hours[date]) next[date] = S.hours[date]; else delete next[date]; }
+      S.hours = next;
+      if (!paint) render();
+    }, () => toast("Lost the connection to saved hours. Reload the page to reconnect."));
+    db.collection("sms").onSnapshot((snap) => {
+      S.sms = snap.docs.map((d) => {
+        const v = d.data();
+        return { id: d.id, apptId: String(v.apptId || ""), clientId: String(v.clientId || ""), clientName: String(v.clientName || ""),
+          phone: String(v.phone || ""), body: String(v.body || ""), sentAt: String(v.sentAt || ""), apptTitle: String(v.apptTitle || ""),
+          apptDate: String(v.apptDate || ""), apptHour: Number.isInteger(v.apptHour) ? v.apptHour : 0, apptDuration: Number.isInteger(v.apptDuration) ? v.apptDuration : 1 };
+      }).filter((m) => m.apptDate).sort((x, y) => y.sentAt.localeCompare(x.sentAt));
+      if (!paint) render();
+    }, () => toast("Lost the connection to the sent SMS list. Reload the page to reconnect."));
+    db.collection("clients").onSnapshot((snap) => {
+      const next = {};
+      for (const d of snap.docs) {
+        const v = d.data();
+        next[d.id] = { id: d.id, name: String(v.name || "Unnamed client"), address: String(v.address || ""),
+          phone: String(v.phone || ""), email: String(v.email || ""), notes: String(v.notes || "") };
+      }
+      S.clients = next;
+      if (!paint) render();
+      if (!$("#coverlay").hidden && !$("#cview").hidden) showClient();
+    }, () => toast("Lost the connection to saved clients. Reload the page to reconnect."));
+    db.collection("appointments").onSnapshot((snap) => {
+      const next = {};
+      for (const d of snap.docs) {
+        const v = d.data();
+        if (typeof v.date !== "string" || !Number.isInteger(v.hour)) continue;
+        next[d.id] = { id: d.id, title: String(v.title || "Untitled"), clientId: String(v.clientId || ""), client: String(v.client || ""),
+          jobId: String(v.jobId || ""), status: ["Scheduled", "Delayed", "Client signed off"].includes(v.status) ? v.status : "Scheduled", date: v.date,
+          hour: v.hour, duration: Math.max(1, Math.min(12, Number.isInteger(v.duration) ? v.duration : 1)), notes: String(v.notes || "") };
+      }
+      S.appts = next;
+      if (S.moving && !next[S.moving]) S.moving = null;
+      if (!paint) render();
+    }, () => toast("Lost the connection to saved appointments. Reload the page to reconnect."));
+    db.collection("jobs").onSnapshot((snap) => {
+      const next = {};
+      for (const d of snap.docs) next[d.id] = normJob(d.id, d.data() || {});
+      S.jobs = next;
+      if (!paint) render();
+      if (!$("#coverlay").hidden && !$("#cview").hidden) showClient();
+    }, () => toast("Lost the connection to saved jobs. Reload the page to reconnect."));
+    db.doc("config/jobs").onSnapshot((snap) => {
+      if (!snap.exists) return;
+      S.jobcfg = JobRules.normCfg(snap.data());
+      if (!paint) render();
+    }, () => {});
+  })();
+})();
+</script>
+
+</body></html>
